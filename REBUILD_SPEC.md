@@ -36,16 +36,19 @@
 
 **Güçlü yanlar:** Dual AI mimarisi doğru tasarlanmış, cross-review konsepti iyi, plan_scorer 9 boyutlu.
 
+**GERÇEK API KEY'LER MEVCUT** — Claude Sonnet 4.6 + Grok 4 + Grok Imagine. Bu her şeyi değiştirir.
+
 **Zayıflıklar ve SaaS çözümleri:**
 
-| # | Sorun | Şu anki durum | SaaS seviyesi |
+| # | Sorun | Şu anki durum | SaaS seviyesi (9/10 hedef) |
 |---|-------|---------------|---------------|
-| F2.1 | Demo planlar naif | Grid-based satır yerleştirme — mimari mantık sıfır | GERÇEK algoritmik layout engine: 1) Yapılaşma alanını grid'e böl 2) Oda öncelik sırasına göre yerleştir (salon→yatak→ıslak hacim→servis) 3) Bitişiklik kurallarına göre pozisyon optimize et 4) Simulated annealing veya constraint satisfaction ile iyileştir |
-| F2.2 | Layout engine yok | Doküman "Katman 2: algoritmik yerleştirme" diyor ama bu katman hiç yazılmadı | Ayrı bir `core/layout_engine.py` modülü: AI'dan gelen oda programını (boyut + ilişki) alır, yapılaşma sınırları içinde fiziksel yerleştirme yapar. Çakışma-sıfır garanti, minimum sirkülasyon alanı, ıslak hacim gruplaması, güneş yönlenmesi |
-| F2.3 | Post-processor mekanik | Çakışan odaları "itiyor" — bu mimari açıdan anlamsız sonuçlar üretir | Post-processor yerine layout engine'de çakışma ASLA oluşmasın. Post-processor sadece doğrulama yapsın (pass/fail), düzeltme yapmasın |
-| F2.4 | AI prompt yetersiz | Prompt'ta oda koordinatlarını AI'a ürettiriyoruz ama LLM'ler geometri konusunda kötü | AI'dan sadece MİMARİ PROGRAM alınacak: oda listesi + bitişiklik ilişkileri + boyut tercihleri + güneş yönlenmesi tercihleri. Koordinatları layout engine hesaplayacak |
-| F2.5 | Mimari SVG eksik | Kapı yayları ve pencere çizgileri var ama: duvar çift çizgi yok (tek çizgi), ölçü çizgileri oda bazlı değil, ıslak hacim taraması opacity düşük, grid aksları yok | Tam mimari çizim standardı: çift çizgi dış duvar (0.25m kalınlık), tek çizgi iç duvar (0.10m), kapı açılma yayı 90°, pencere üçlü çizgi (cam+çerçeve), extension line + dimension line, yapısal aks grid'i (A-B-C / 1-2-3), ıslak hacim ANSI31 taraması, oda etiket: isim + alan + kat yüksekliği |
-| F2.6 | 3 alternatif aynı | Demo modda 3 strateji var ama hepsi çok benzer sonuç veriyor | Her strateji genuinely farklı olacak: 1) "Kompakt" — minimum sirkülasyon, max yaşam alanı 2) "Güneş Odaklı" — tüm yaşam alanları güney cephede 3) "Mahremiyet" — yatak odaları tamamen izole, çift koridor |
+| F2.1 | Demo planlar naif | Grid-based satır yerleştirme — mimari mantık sıfır | **İKİ KATMANLI MİMARİ ZEKA:** Katman A: AI (Claude+Grok) detaylı mimari program üretir — oda bitişiklik grafiği, güneş tercihleri, dolaşım şeması, gizlilik zonları, ıslak hacim gruplaması mantığı. Katman B: Layout engine bu programı fiziksel koordinatlara çevirir — bin-packing + constraint satisfaction. AI geometri yazmaz, MİMARİ DÜŞÜNÜR |
+| F2.2 | Layout engine yok | Doküman "Katman 2: algoritmik yerleştirme" diyor ama bu katman hiç yazılmadı | **`core/layout_engine.py` — Profesyonel yerleştirme motoru:** 1) Yapılaşma alanını koridor aksına göre ikiye böl 2) Oda öncelik sırasına göre yerleştir (salon→yatak→ıslak→servis) 3) Bitişiklik constraint'leri: banyo-yatak, mutfak-salon, antre-giriş 4) Çakışma ASLA oluşmaz (placement validation her adımda) 5) Sirkülasyon analizi: tüm odalara koridor/antreden erişim garanti 6) 3 farklı strateji genuinely farklı layout üretir |
+| F2.3 | AI → Engine → AI döngüsü yok | AI plan üretir, post-processor mekanik düzeltir, biter | **İTERATİF İYİLEŞTİRME DÖNGÜSÜ (gerçek API key ile):** 1) Claude mimari program üretir 2) Layout engine yerleştirir 3) Plan scorer puanlar 4) Düşük puan alan odalar/ilişkiler feedback olarak Claude'a geri gönderilir 5) Claude revize program üretir 6) 2-3 iterasyon → en iyi plan. Grok aynı döngüyü bağımsız yapar. Final: 4+ plan arasından en iyi 3 |
+| F2.4 | Cross-review demo | API key yoksa hardcoded "65 puan" dönüyor | **GERÇEK CROSS-REVIEW:** Claude planını Grok eleştirir (güçlü/zayıf/öneri), Grok planını Claude eleştirir. Eleştiri puanı + metin. Final skor: %40 otomatik scorer + %30 cross-review + %30 AI self-assessment. Frontend'te eleştiri metni gösterilir |
+| F2.5 | Mimari SVG eksik | Kapı yayları var ama: duvar çift çizgi yok, ölçü çizgileri oda bazlı değil, grid aksları yok | **TAM MİMARİ ÇİZİM STANDARDI:** Çift çizgi dış duvar (0.25m kalınlık gösterimli), tek çizgi iç duvar (0.10m), kapı 90° yay + açılma yönü oku, pencere üçlü çizgi (cam+çerçeve) genişlik yazılı, extension line + dimension line (her oda genişlik+derinlik), yapısal aks grid'i (A-B-C / 1-2-3) kesikli çizgi, ıslak hacim ANSI31 diyagonal tarama (45°), mobilya placeholder (yatak dikdörtgen, masa daire, tezgah çizgi), oda etiket: isim + alan m² + tavan yüksekliği |
+| F2.6 | 3 alternatif aynı | Demo modda hepsi benzer | **5 GENUİNE STRATEJİ (Claude 2 + Grok 2 + Hybrid 1):** Claude-1: "Açık Plan" — salon+mutfak birleşik, max sosyal alan. Claude-2: "Mahremiyet" — yatak odaları izole, çift koridor. Grok-1: "Güneş Maksimum" — tüm yaşam alanları güney. Grok-2: "Kompakt Verimli" — min sirkülasyon, max kullanılabilir alan. Hybrid: En iyi 2 planın güçlü yönlerini birleştiren AI-sentez plan |
+| F2.7 | Doğal dil girişi yok | Sadece form-based oda listesi | **AI DOĞAL DİL GİRİŞİ:** Kullanıcı "3+1, salonu geniş olsun, mutfak açık planlı, 2 balkon istiyorum" yazar → Claude bu metni parse eder → oda programı otomatik oluşturulur. Formla düzenleme de mümkün (hibrit giriş) |
 
 ---
 
@@ -118,142 +121,180 @@
 
 ---
 
-## YENİDEN İNŞA SIRASI (Öncelik × Etki matrisi)
+## YENİDEN İNŞA SIRASI (Her seviye minimum 8.5/10)
 
-### SEVİYE 1 — Temel Altyapı (Her şeyden önce)
-1. **projectStore genişletme** — planResults, feasibilityData, earthquakeData, energyData, selectedPlanIndex ekleme
-2. **Serialize/deserialize** — tüm store ↔ JSON dönüşümü, proje kaydetme/yükleme tam çalışır
-3. **Toast notification sistemi** — başarı/hata/bilgi mesajları için merkezi sistem
-
-### SEVİYE 2 — AI Plan Motoru (En zayıf modül)
-4. **`core/layout_engine.py`** — Constraint-based yerleştirme motoru
-5. **AI prompt yeniden yazımı** — AI'dan program al, yerleştirmeyi engine yapsın
-6. **3 genuinely farklı strateji** — kompakt, güneş odaklı, mahremiyet
-7. **Mimari SVG iyileştirme** — çift çizgi duvar, aks grid, ölçü çizgileri
-
-### SEVİYE 3 — 3D Mimari Görselleştirme (Enscape/Twinmotion seviyesi)
-
-**Hedef:** Üniversite jürisi ekranı gördüğünde "bu gerçek bir yazılım" desin. Profesyonel mimari görselleştirme kalitesi.
-
-#### 3A. Veri Akışı + Bina Geometri Motoru
-8. **Plan → 3D tam entegrasyon** — hardcoded demo kaldır. projectStore'daki selectedPlanRooms doğrudan BuildingViewer'a akar. Plan adımında alternatif değiştirince 3D anında güncellenir
-9. **Akıllı bina geometri üretici** (`threed_router.py` genişletme):
-   - Döşeme: her katta gerçek döşeme plağı (0.30m kalınlık, kenar profili)
-   - Duvarlar: dış duvar 0.25m, iç taşıyıcı 0.20m, bölme 0.10m — geometri olarak ayrı kalınlıkta
-   - Duvar boşlukları: pencere ve kapı yerlerinde duvar kesintisi (gerçek boşluk, düz kutu değil)
-   - Çatı: beşik çatı veya teras çatı seçeneği (kırma çatı geometrisi)
-   - Saçak: çatıdan 0.50m taşma
-   - Zemin kat girişi: giriş kapısı + saçak + basamak
-   - Merdiven evi: kat boşluğu olarak görünen alan (her katta)
-   - Temel: zemin altı 0.50m temel bandı (görünür)
-
-#### 3B. PBR Materyaller + Texture
-10. **Programmatic texture generation** (shader veya canvas-based):
-    - Dış cephe: sıva texture (noise-based roughness variation) + renk seçimi (beyaz, krem, gri, tuğla)
-    - İç duvar: beyaz boya (subtle roughness)
-    - Döşeme: seramik karo deseni (grid pattern, 0.60×0.60m)
-    - Balkon: taş/karo zemin
-    - Pencere camı: `MeshPhysicalMaterial` — transmission 0.6, ior 1.5, envmap reflection
-    - Kapı: ahşap doku (procedural wood grain)
-    - Kolon: beton texture (noise)
-    - Çatı: kiremit rengi
-11. **Environment map**: HDR sky dome (ücretsiz HDRI — sunny outdoor), gerçekçi gökyüzü yansıması cam ve parlak yüzeylerde
-
-#### 3C. Aydınlatma + Post-Processing
-12. **Gelişmiş aydınlatma**:
-    - Sun light: enlem + saat bazlı gerçek pozisyon (mevcut, iyileştirilecek)
-    - Ambient: hemisphere light (gökyüzü mavisi + zemin kahverengisi)
-    - Shadow: PCFSoftShadowMap, mapSize 4096×4096, cascade shadow düşünülebilir
-    - İç mekan modunda: oda bazlı point light (pencereden giren ışık simülasyonu)
-13. **Post-processing pipeline** (React Three Fiber `@react-three/postprocessing`):
-    - SSAO (Screen Space Ambient Occlusion) — köşelerde gerçekçi gölge
-    - Bloom — parlak yüzeylerde (cam, metal) ışık taşması
-    - Tone mapping — ACES filmic (mevcut) + exposure kontrolü
-    - Vignette — kenar kararması (subtle, profesyonel fotoğraf hissi)
-    - Anti-aliasing — SMAA veya FXAA
-
-#### 3D. İnteraktivite + UX
-14. **Kamera preset'leri** (tek tıkla geçiş, animasyonlu kamera hareketi):
-    - Kuş bakışı (top-down 45°)
-    - Güney cephe (street level)
-    - Kuzey cephe
-    - Doğu/Batı cephe
-    - İç mekan walkthrough (salon içinden bakış)
-    - İzometrik (45° her iki eksende)
-15. **Kat geçiş animasyonu**: kat seçildiğinde üstteki katlar yukarı kayarak açılır (spring animation, framer-motion veya R3F useSpring)
-16. **Oda interaktivitesi**:
-    - Hover: oda parlar (emissive) + tooltip (isim + alan + boyut)
-    - Click: sağ panelde oda detay kartı açılır (boyutlar, pencere yönü, bağlı odalar)
-    - Double-click: kamera o odaya fly-to + zoom
-17. **Ölçüm modu**: iki nokta arası mesafe ölçümü (tıkla-tıkla → dimension line)
-
-#### 3E. Çevre + Peyzaj (Bina etrafı)
-18. **Basit çevre elementleri**:
-    - Zemin döşeme: parsel sınırları (yeşil alan + yol kenarı gri)
-    - Ağaç placeholder'ları: billboard sprite veya basit konik geometri (3-5 adet)
-    - Yol: parsel önünde gri şerit
-    - Araba placeholder: basit kutu (otopark alanında)
-    - Çim: yeşil plane + noise texture (parsel bahçe alanları)
-19. **Kuzey oku**: 3D kuzey oku (compass) sahne köşesinde, her zaman görünür
-
-#### 3F. Export + Screenshot
-20. **Yüksek çözünürlük screenshot**: Canvas capture → PNG (2× veya 4× resolution multiplier). "Fotoğraf Çek" butonu → anında indirilebilir dosya
-21. **GLTF/GLB export**: Three.js scene'den GLTFExporter ile tüm bina modeli download (Blender/SketchUp'a aktarılabilir)
-22. **Turntable video**: 360° kamera dönüşü kaydı (opsiyonel, WebM/GIF)
-
-#### 3G. Görünüm Modları (Toggle panel)
-23. **6 görünüm modu** (sağ üst panel, icon toggle):
-    - **Solid**: varsayılan, tam PBR
-    - **X-Ray**: duvarlar %15 opacity, iç mekan görünür (mevcut, iyileştirilecek)
-    - **Wireframe**: tüm geometri wireframe (mühendislik görünümü)
-    - **Section cut**: yatay veya dikey kesit düzlemi, clipping plane ile (mevcut, iyileştirilecek — dikey kesit eklenecek)
-    - **Exploded**: katlar ayrışık (mevcut, spring animasyon eklenecek)
-    - **Thermal**: enerji performansına göre renklendirme (kırmızı=kayıp, yeşil=iyi — U değerlerine bağlı)
-24. **Kolon grid overlay**: toggle ile açılıp kapanır, aks isimleri (A, B, C / 1, 2, 3) 3D text olarak görünür
-
-#### 3H. Grok Imagine Render Galerisi (İyileştirilmiş)
-25. **Plan verisinden otomatik oda listesi**: render kartları hardcoded değil, seçili plandan dinamik
-26. **Dış cephe render**: 4 yönden (güney, doğu, batı, kuş bakışı) otomatik prompt
-27. **Render karşılaştırma**: 4 stili aynı oda için yan yana slider ile karşılaştır
-28. **API key yoksa**: her oda kartında profesyonel placeholder görsel + "Grok API key ile gerçek render alın" overlay
-29. **Render geçmişi**: üretilen render'lar session boyunca cache'lenir, tekrar üretmeye gerek yok
-
-#### KABUL KRİTERLERİ — SEVİYE 3
-- [ ] Plan adımında alternatif seçildiğinde 3D model 2 saniye içinde güncellenir
-- [ ] Orbit 60fps (mobil hariç)
-- [ ] En az 4 farklı PBR materyal (dış cephe, iç duvar, cam, ahşap) texture ile
-- [ ] SSAO + bloom post-processing aktif
-- [ ] 6 kamera preset'i, animasyonlu geçiş
-- [ ] Oda hover tooltip + click detay paneli
-- [ ] Screenshot PNG 2× çözünürlük çalışır
-- [ ] GLTF export çalışır (Blender'da açılabilir)
-- [ ] Çevre: zemin + en az 3 ağaç + yol
-- [ ] 6 görünüm modu toggle çalışır
-- [ ] Grok render kartları plan verisinden dinamik
-
-### SEVİYE 4 — Fizibilite + PDF
-11. **PDF rapor** — 15+ sayfa, profesyonel, bankaya sunulabilir
-12. **Deprem/enerji otomatik tetikleme** — tek buton
-13. **Daire karması editörü** — kat bazlı farklı tipler
-
-### SEVİYE 5 — Export + UI Polish
-14. **Export toolbar** — SVG, DXF, PDF, GLTF butonları her adımda
-15. **AFAD Ss/S1 hardcoded tablo** — 81 il
-16. **Auto-save** — adım tamamlandığında otomatik kaydet
-17. **Landing page** — hero + features + CTA
+**ÖNEMLİ:** Claude Sonnet 4.6 + Grok 4 + Grok Imagine API key'leri mevcut. Demo mode artık fallback değil, ana mod. Tüm AI özellikleri gerçek API ile çalışacak.
 
 ---
 
-## HER SEVİYE İÇİN TAHMİNİ SOHBET SAYISI
+### SEVİYE 1 — Temel Altyapı + Veri Bütünlüğü → Hedef: 9/10
+1. **projectStore tam genişletme** — planResults (tüm alternatifler + puanlar), selectedPlanIndex, feasibilityData, earthquakeData, energyData, buildingData3D hepsi store'da
+2. **Tam serialize/deserialize** — tüm store ↔ JSON. Proje kaydet → aç → bıraktığın yerden devam, hiçbir veri kaybı yok. Her adım (parsel, imar, plan, 3D, fizibilite) tam restore
+3. **Auto-save sistemi** — her adım tamamlandığında otomatik kayıt + header'da "son kaydedilme" göstergesi + manuel "Kaydet" butonu
+4. **Toast notification sistemi** — başarı (yeşil), hata (kırmızı), bilgi (mavi), uyarı (sarı). 4 saniye auto-dismiss. Stack yapısı (birden fazla toast)
+5. **Global error boundary** — React error boundary, crash durumunda kullanıcı dostu mesaj + "Yeniden Dene" butonu
+6. **API key yönetimi** — Settings sayfası: Claude API key, Grok API key girişi. localStorage'da şifreli saklanır. Key yoksa ilgili butonlarda "API key gerekli" uyarısı
 
-| Seviye | Kapsam | Sohbet |
-|--------|--------|--------|
-| 1 | Temel altyapı + store | 1 sohbet |
-| 2 | AI layout engine + SVG | 2 sohbet (engine + frontend) |
-| 3 | 3D mimari görselleştirme (geometri + materyal + post-processing + interaktivite + çevre + export) | 3-4 sohbet |
-| 4 | Fizibilite PDF + deprem/enerji | 1-2 sohbet |
-| 5 | Export + landing + polish | 1 sohbet |
-| **Toplam** | | **8-10 sohbet** |
+---
+
+### SEVİYE 2 — AI Plan Motoru (Gerçek AI ile) → Hedef: 9/10
+7. **`core/layout_engine.py`** — Profesyonel constraint-based yerleştirme:
+   - Koridor aksı belirleme (bina derinliğinin ortası veya 1/3'ü)
+   - Oda yerleştirme öncelik sırası: salon (güneş cephe) → mutfak (salon yanı) → yatak odaları (sessiz cephe) → ıslak hacimler (grup) → servis (koridor/antre)
+   - Her adımda çakışma kontrolü (placement validation)
+   - Bitişiklik constraint'leri: banyo↔yatak, mutfak↔salon, antre↔giriş kapısı
+   - Sirkülasyon garanti: tüm odalara koridor veya antreden erişim
+   - Çakışma asla oluşmaz — engine sadece valid pozisyonlara yerleştirir
+8. **AI prompt yeniden tasarım** — AI'dan MİMARİ PROGRAM al (oda ilişki grafiği + boyut tercihleri + güneş stratejisi + dolaşım şeması), koordinat üretmesin. Layout engine koordinatları hesaplar
+9. **İteratif AI döngüsü** — Generate → Score → Feedback → Regenerate (2-3 iterasyon). Claude ve Grok bağımsız döngüler. Son iterasyonda en iyi planlar seçilir
+10. **Gerçek cross-review** — Claude planını Grok eleştirir, Grok planını Claude eleştirir. Eleştiri metni + puan frontend'te gösterilir
+11. **5 genuinely farklı alternatif** — Claude 2 + Grok 2 + AI-hybrid 1
+12. **Doğal dil giriş** — "Geniş salonlu 3+1, açık mutfak" → AI parse → oda programı otomatik
+13. **Mimari SVG tam standart** — çift çizgi duvar (kalınlık gösterimi), kapı 90° yay, pencere üçlü çizgi, dimension line, aks grid (A-B-C/1-2-3), ıslak hacim ANSI31 tarama, mobilya placeholder, oda etiket (isim + alan + yükseklik)
+14. **Radar chart** — 3 alternatifin 9 boyutlu puanını Recharts radar chart ile karşılaştırma
+
+---
+
+### SEVİYE 3 — 3D Mimari Görselleştirme (Enscape/Twinmotion seviyesi) → Hedef: 9/10
+
+#### 3A. Veri Akışı + Bina Geometri Motoru
+15. **Plan → 3D tam entegrasyon** — projectStore'daki selectedPlanRooms → BuildingViewer. Plan değişince 3D anında güncellenir
+16. **Akıllı bina geometri üretici**:
+   - Döşeme: 0.30m kalınlık, kenar profili
+   - Duvarlar: dış 0.25m, iç taşıyıcı 0.20m, bölme 0.10m — ayrı kalınlık geometri
+   - Pencere/kapı yerinde duvar kesintisi (gerçek boşluk)
+   - Çatı: beşik çatı veya teras çatı seçeneği
+   - Saçak 0.50m taşma, zemin kat giriş kapısı + basamak
+   - Merdiven evi boşluğu, temel bandı
+
+#### 3B. PBR Materyaller + Texture
+17. **Programmatic texture** — sıva noise, seramik karo grid (0.60×0.60m), ahşap grain, beton noise
+18. **MeshPhysicalMaterial** — cam: transmission 0.6 + ior 1.5 + envmap reflection
+19. **HDR sky dome** — ücretsiz HDRI sunny outdoor, gerçekçi gökyüzü yansıması
+
+#### 3C. Aydınlatma + Post-Processing
+20. **Gelişmiş aydınlatma** — hemisphere light + sun (enlem+saat) + PCFSoftShadowMap 4096
+21. **Post-processing** — SSAO + bloom + vignette + SMAA + exposure kontrolü
+
+#### 3D. İnteraktivite + UX
+22. **6 kamera preset** — kuş bakışı, 4 cephe, iç mekan — animasyonlu geçiş (spring)
+23. **Oda interaktivite** — hover emissive highlight + tooltip, click detay panel, double-click fly-to
+24. **Ölçüm modu** — iki nokta arası mesafe (tıkla-tıkla → dimension line)
+
+#### 3E. Çevre + Peyzaj
+25. **Basit çevre** — parsel sınırları yeşil alan, yol, ağaç placeholder (3-5 adet), araba, çim texture, 3D kuzey oku
+
+#### 3F. Export + Screenshot
+26. **Screenshot PNG** 2×/4× çözünürlük, "Fotoğraf Çek" butonu
+27. **GLTF/GLB export** — Three.js GLTFExporter ile tüm bina modeli
+
+#### 3G. 6 Görünüm Modu
+28. **Solid / X-Ray / Wireframe / Section Cut (yatay+dikey) / Exploded (spring anim.) / Thermal** (enerji U-değerine göre renklendirme)
+
+#### 3H. Grok Imagine Render Galerisi (GERÇEK API KEY İLE)
+29. **Plan verisinden dinamik oda kartları** — seçili planın odaları otomatik listelenir
+30. **Dış cephe render** — 4 yönden otomatik prompt (güney, doğu, batı, kuş bakışı)
+31. **4 stil yan yana** — Modern Türk / Klasik / Minimalist / Lüks — aynı oda, 4 stil slider karşılaştırma
+32. **Render cache** — üretilen render'lar store'da tutulur, tekrar üretmeye gerek yok
+33. **Batch render** — "Tüm Odaları Render Et" tek butonla sıralı üretim + progress bar
+
+---
+
+### SEVİYE 4 — Fizibilite + PDF → Hedef: 9/10
+34. **PDF rapor** — 15-20 sayfa profesyonel:
+   - Kapak sayfası (proje adı, tarih, logo)
+   - İçindekiler
+   - Proje özeti (parsel, imar, daire karması)
+   - Maliyet detay tablosu (15+ kalem)
+   - Daire bazlı gelir tablosu (kat/cephe primi)
+   - Nakit akışı grafiği (matplotlib → PDF embed)
+   - Duyarlılık ısı haritası grafiği
+   - Monte Carlo histogram grafiği
+   - Tornado grafiği
+   - Deprem parametreleri + tasarım spektrumu grafiği
+   - Enerji performans (A-G bar + U değerleri)
+   - Sonuç ve öneriler
+   - Yasal uyarı sayfası
+35. **Daire karması editörü** — kat bazlı farklı daire tipleri: zemin kat 1×3+1 + 1×2+1, normal katlar 2×3+1, çatı katı 1×4+1
+36. **Deprem + enerji otomatik tetikleme** — fizibilite "Hesapla" butonu → maliyet + gelir + fizibilite + deprem + enerji hepsi paralel
+37. **AI yorum** — Claude API ile fizibilite sonuçlarının yorumunu yaptır: "Bu proje %23 kâr marjı ile orta riskli. Satış fiyatı %10 düşse bile kârlı kalır..." Yorum PDF'e de eklenir
+
+---
+
+### SEVİYE 5 — Export + Deprem/Enerji İyileştirme + Landing → Hedef: 8.5/10
+38. **Export toolbar her adımda** — Adım 3: SVG/DXF/PNG, Adım 4: GLTF/PNG screenshot, Adım 5: PDF rapor. Header'da global "Dışa Aktar" menüsü
+39. **AFAD 81 il Ss/S1 tablosu** — `config/afad_ss_s1.py` hardcoded tablo (AFAD TDTH'den bir kere çekilmiş). API çalışırsa API, çalışmazsa tablo
+40. **Kolon grid SVG overlay** — plan çiziminde toggle ile açılıp kapanan aks grid'i
+41. **Enerji pencere tipi karşılaştırma** — duvar yalıtımına ek olarak pencere tipi (tek cam→Low-E) karşılaştırma grafiği
+42. **Landing page** — hero section (animasyonlu bina silüeti), 5 özellik grid (ikon + açıklama), screenshot carousel (3 ekran görüntüsü), CTA → auth
+43. **Auto-save** — her adım tamamlandığında proje otomatik güncellenir
+44. **Responsive temel** — tablet breakpoint kontrolü, mobile'da stack layout
+
+---
+
+### KABUL KRİTERLERİ (Her seviye için)
+
+**Seviye 1 (9/10):**
+- [ ] Proje kaydet → tarayıcı kapat → aç → tüm veriler (parsel, imar, plan, fizibilite) tam restore
+- [ ] Toast notification 4 türde çalışır
+- [ ] API key girişi settings'ten yapılır
+
+**Seviye 2 (9/10):**
+- [ ] Gerçek Claude + Grok API ile plan üretimi çalışır
+- [ ] Layout engine %100 çakışmasız plan üretir
+- [ ] Cross-review gerçek AI eleştiri metni gösterir
+- [ ] 3 alternatif genuinely farklı yerleşim
+- [ ] Mimari SVG: çift çizgi duvar + aks grid + ölçü çizgisi çalışır
+- [ ] Doğal dil giriş → oda programı otomatik
+- [ ] Radar chart 9 boyutlu karşılaştırma
+
+**Seviye 3 (9/10):**
+- [ ] Plan adımında alternatif seçilince 3D 2 saniye içinde güncellenir
+- [ ] 60fps orbit (desktop)
+- [ ] 4+ farklı PBR materyal texture ile
+- [ ] SSAO + bloom post-processing aktif
+- [ ] 6 kamera preset animasyonlu geçiş
+- [ ] Oda hover + click + fly-to çalışır
+- [ ] Screenshot PNG 2× çalışır
+- [ ] GLTF export Blender'da açılabilir
+- [ ] Çevre: zemin + ağaç + yol
+- [ ] 6 görünüm modu toggle
+- [ ] Grok Imagine gerçek render üretir
+- [ ] 4 stil karşılaştırma çalışır
+
+**Seviye 4 (9/10):**
+- [ ] PDF rapor 15+ sayfa, grafik embed, profesyonel tipografi
+- [ ] Daire karması kat bazlı düzenlenebilir
+- [ ] Tek "Hesapla" butonu → 5 modül paralel
+- [ ] AI yorum fizibilite sonuçlarını Türkçe analiz eder
+
+**Seviye 5 (8.5/10):**
+- [ ] Her adımda export butonları görünür ve çalışır
+- [ ] AFAD 81 il tablosu fallback olarak çalışır
+- [ ] Landing page + auth flow profesyonel
+- [ ] Auto-save çalışır
+
+---
+
+## TAHMİNİ SOHBET SAYISI
+
+| Seviye | Kapsam | Hedef | Sohbet |
+|--------|--------|-------|--------|
+| 1 | Altyapı + store + auto-save + toast + API key yönetimi | 9/10 | 1 sohbet |
+| 2 | Layout engine + AI prompt + iteratif döngü + cross-review + SVG + radar + doğal dil | 9/10 | 2-3 sohbet |
+| 3 | Bina geometri + PBR + post-processing + 6 mod + interaktivite + çevre + Grok render | 9/10 | 3-4 sohbet |
+| 4 | PDF rapor (15+ sayfa) + daire karması + otomatik tetikleme + AI yorum | 9/10 | 1-2 sohbet |
+| 5 | Export toolbar + AFAD 81 il + kolon grid SVG + landing + responsive | 8.5/10 | 1-2 sohbet |
+| **Toplam** | **44 madde, 5 seviye** | **Min 8.5** | **8-12 sohbet** |
+
+---
+
+## MEVCUT API KEY'LER
+
+- **Claude API key** — model: `claude-sonnet-4-6-20250514` (plan üretimi + cross-review + fizibilite yorum)
+- **Grok/xAI API key** — model: `grok-4-0620` (plan üretimi + cross-review), `grok-2-image` (fotogerçekçi render)
+
+Bu key'ler `.env` dosyasında saklanacak, frontend'ten settings sayfasından da girilebilecek.
 
 ---
 
@@ -263,10 +304,15 @@ Her sohbette şunu yapıştır:
 
 ```
 1. Proje dokümanını (orijinal .txt)
-2. Bu spesifikasyon dokümanını
+2. Bu spesifikasyon dokümanını (REBUILD_SPEC.md)
 3. "Seviye X'i tamamla" de
 ```
 
 Ben repo'yu çeker, o seviyedeki tüm maddeleri sırayla yapar, test eder, push ederim.
-Her dosyada kendime soracağım: "Bu SaaS ürünü müşteriye satılabilir mi?"
-Cevap hayırsa o dosyayı push etmeyeceğim.
+
+**Her dosyada kendime soracağım:**
+- "Bu SaaS ürünü müşteriye satılabilir mi?"
+- "Bu kod jüri önünde utanç yaratır mı?"
+- "Enscape/Twinmotion kullanan biri bunu görse ne der?"
+
+Üç sorudan birine bile olumsuz cevap varsa o dosyayı push etmeyeceğim.
