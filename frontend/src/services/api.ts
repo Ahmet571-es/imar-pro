@@ -51,3 +51,12 @@ export async function calculateZoning(params: Record<string, unknown>) {
 export async function getZoningDefaults() {
   return request('/api/zoning/defaults')
 }
+
+// ── Plan API ──
+
+export async function generatePlan(params: Record<string, unknown>) {
+  return request('/api/plan/generate', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}

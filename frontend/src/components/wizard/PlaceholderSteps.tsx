@@ -1,5 +1,5 @@
 import { useProjectStore } from '@/stores/projectStore'
-import { ArrowLeft, BrainCircuit, Box, BarChart3, Lock } from 'lucide-react'
+import { ArrowLeft, Box, BarChart3, Lock } from 'lucide-react'
 
 function ComingSoon({ title, icon, description }: { title: string; icon: React.ReactNode; description: string }) {
   const { setStep } = useProjectStore()
@@ -12,25 +12,15 @@ function ComingSoon({ title, icon, description }: { title: string; icon: React.R
       <p className="text-text-muted mb-2">{description}</p>
       <div className="inline-flex items-center gap-1.5 text-xs text-text-light bg-surface-alt px-3 py-1.5 rounded-full mb-8">
         <Lock className="w-3 h-3" />
-        Faz 2+ ile aktif olacak
+        Faz 3+ ile aktif olacak
       </div>
       <div>
-        <button onClick={() => setStep('zoning')} className="btn-secondary inline-flex items-center gap-2">
+        <button onClick={() => setStep('plan')} className="btn-secondary inline-flex items-center gap-2">
           <ArrowLeft className="w-4 h-4" />
-          İmar Adımına Dön
+          AI Plan Adımına Dön
         </button>
       </div>
     </div>
-  )
-}
-
-export function PlanStep() {
-  return (
-    <ComingSoon
-      title="AI Plan Üretimi"
-      icon={<BrainCircuit className="w-8 h-8" />}
-      description="Claude Sonnet 4.6 + Grok 4 Dual AI ile kat planı üretimi, cross-review ve puanlama."
-    />
   )
 }
 
