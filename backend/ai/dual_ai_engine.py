@@ -1,10 +1,13 @@
 """
-Dual AI Plan Üretim Motoru — Claude Sonnet 4.6 + Grok 4 koordinatörü.
+Dual AI Plan Üretim Motoru — Claude Sonnet 4.6 + Grok 4 + Layout Engine.
 
-3 Katmanlı Güvenlik:
-  Katman 1: AI mimari plan üretir (koordinatlar dahil)
+MİMARİ:
+  Katman 1: AI mimari program üretir (oda ilişki grafiği + boyut tercihleri)
+  Katman 1b: Layout Engine AI programını fiziksel koordinatlara çevirir
   Katman 2: Post-processing doğrulama (çakışma, sınır, yönetmelik)
   Katman 3: Plan scorer ile puanlama + çapraz değerlendirme
+  Katman 4: Layout Engine bağımsız stratejiler üretir (AI'dan bağımsız)
+  Katman 5: Hibrit plan (en iyi 2'nin sentezi)
 """
 
 import logging
@@ -15,7 +18,9 @@ from ai.grok_planner import generate_plans_grok
 from ai.cross_review import cross_review
 from ai.consensus import select_best_plans
 from ai.post_processor import validate_and_fix
+from ai.program_bridge import generate_hybrid_plan
 from core.plan_scorer import score_plan, FloorPlan, ScoreBreakdown
+from core.layout_engine import LayoutEngine, build_room_program
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +101,15 @@ def generate_dual_ai_plans(
     grok_api_key: str = "",
     max_iterations: int = 1,
 ) -> DualAIResult:
-    """Dual AI ile plan üretim döngüsü."""
+    """Dual AI + Layout Engine ile plan üretim döngüsü.
+    
+    5 KATMANLI MİMARİ:
+    1. Claude + Grok AI planları (API key varsa)
+    2. Layout Engine bağımsız stratejiler (her zaman)
+    3. Post-processing + puanlama
+    4. Cross-review (API key varsa)
+    5. Hibrit plan (en iyi 2'nin sentezi)
+    """
     result = DualAIResult()
 
     # Yapılaşma boyutlarını hesapla
@@ -109,108 +122,161 @@ def generate_dual_ai_plans(
     else:
         bw, bh, ox, oy = 14.0, 10.0, 0.0, 0.0
 
+    odalar = apartment_program.get("odalar", [])
+    apt_type = apartment_program.get("tip", "3+1")
+
     for iteration in range(1, max_iterations + 1):
         result.iteration = iteration
         logger.info(f"=== Dual AI İterasyon {iteration}/{max_iterations} ===")
 
-        # ── KATMAN 1: AI Plan Üretimi ──
+        # ── KATMAN 1: AI Plan Üretimi (API key varsa) ──
 
-        # Claude'dan 2 plan
-        try:
-            claude_plans = generate_plans_claude(
-                polygon_coords=buildable_polygon_coords,
-                apartment_program=apartment_program,
-                dataset_rules=dataset_rules,
-                sun_direction=sun_best_direction,
-                api_key=claude_api_key,
-                plan_count=2,
-                previous_feedback=_get_feedback(result.best_plans) if iteration > 1 else None,
-            )
-            for p in claude_plans:
-                result.all_plans.append(PlanAlternatif(
-                    plan=p["floor_plan"],
-                    source=p.get("source", "claude"),
-                    plan_name=p.get("plan_name", "Claude Plan"),
-                    strategy=p.get("strategy", ""),
-                    reasoning=p.get("reasoning", ""),
-                ))
-            logger.info(f"Claude: {len(claude_plans)} plan üretildi")
-        except Exception as e:
-            logger.error(f"Claude hata: {e}")
+        if claude_api_key:
+            try:
+                claude_plans = generate_plans_claude(
+                    polygon_coords=buildable_polygon_coords,
+                    apartment_program=apartment_program,
+                    dataset_rules=dataset_rules,
+                    sun_direction=sun_best_direction,
+                    api_key=claude_api_key,
+                    plan_count=2,
+                    previous_feedback=_get_feedback(result.best_plans) if iteration > 1 else None,
+                )
+                for p in claude_plans:
+                    result.all_plans.append(PlanAlternatif(
+                        plan=p["floor_plan"],
+                        source="claude",
+                        plan_name=p.get("plan_name", "Claude Plan"),
+                        strategy=p.get("strategy", ""),
+                        reasoning=p.get("reasoning", ""),
+                    ))
+                logger.info(f"Claude: {len(claude_plans)} plan üretildi")
+            except Exception as e:
+                logger.error(f"Claude hata: {e}")
 
-        # Grok'tan 2 plan
+        if grok_api_key:
+            try:
+                grok_plans = generate_plans_grok(
+                    polygon_coords=buildable_polygon_coords,
+                    apartment_program=apartment_program,
+                    dataset_rules=dataset_rules,
+                    sun_direction=sun_best_direction,
+                    api_key=grok_api_key,
+                    plan_count=2,
+                    previous_feedback=_get_feedback(result.best_plans) if iteration > 1 else None,
+                )
+                for p in grok_plans:
+                    result.all_plans.append(PlanAlternatif(
+                        plan=p["floor_plan"],
+                        source="grok",
+                        plan_name=p.get("plan_name", "Grok Plan"),
+                        strategy=p.get("strategy", ""),
+                        reasoning=p.get("reasoning", ""),
+                    ))
+                logger.info(f"Grok: {len(grok_plans)} plan üretildi")
+            except Exception as e:
+                logger.error(f"Grok hata: {e}")
+
+        # ── KATMAN 1b: Layout Engine bağımsız stratejiler ──
         try:
-            grok_plans = generate_plans_grok(
-                polygon_coords=buildable_polygon_coords,
-                apartment_program=apartment_program,
-                dataset_rules=dataset_rules,
-                sun_direction=sun_best_direction,
-                api_key=grok_api_key,
-                plan_count=2,
-                previous_feedback=_get_feedback(result.best_plans) if iteration > 1 else None,
-            )
-            for p in grok_plans:
-                result.all_plans.append(PlanAlternatif(
-                    plan=p["floor_plan"],
-                    source=p.get("source", "grok"),
-                    plan_name=p.get("plan_name", "Grok Plan"),
-                    strategy=p.get("strategy", ""),
-                    reasoning=p.get("reasoning", ""),
-                ))
-            logger.info(f"Grok: {len(grok_plans)} plan üretildi")
+            room_program = build_room_program(odalar, apt_type)
+            engine = LayoutEngine(width=bw, height=bh, origin_x=ox, origin_y=oy)
+            
+            # AI planları varsa sadece 2 farklı strateji ekle, yoksa 5 strateji
+            strategies = ["south_social", "privacy_zones"] if result.all_plans else [
+                "south_social", "central_corridor", "privacy_zones", "compact_efficient", "sun_maximum"
+            ]
+            
+            for strategy in strategies:
+                layout = engine.generate(room_program, strategy)
+                if layout.is_valid and layout.rooms:
+                    fp = layout.to_floor_plan(bw, bh, ox, oy, apt_type)
+                    result.all_plans.append(PlanAlternatif(
+                        plan=fp,
+                        source="engine",
+                        plan_name=layout.strategy_name,
+                        strategy=layout.strategy_description,
+                        reasoning=f"Layout engine '{layout.strategy_name}' — {len(layout.rooms)} oda",
+                    ))
+            logger.info(f"Layout Engine: {len(strategies)} strateji üretildi")
         except Exception as e:
-            logger.error(f"Grok hata: {e}")
+            logger.error(f"Layout Engine hata: {e}")
 
         # ── KATMAN 2: Post-Processing Doğrulama ──
         for alt in result.all_plans:
-            if not alt.validation_fixes:  # henüz doğrulanmamış
-                fixed_plan, validation = validate_and_fix(
-                    alt.plan, bw, bh, ox, oy
-                )
+            if not alt.validation_fixes and alt.source != "engine":  # Engine planları zaten valid
+                fixed_plan, validation = validate_and_fix(alt.plan, bw, bh, ox, oy)
                 alt.plan = fixed_plan
                 alt.validation_warnings = validation.warnings + validation.code_violations
                 alt.validation_fixes = validation.fixes_applied
 
-                if validation.fixes_applied:
-                    logger.info(f"{alt.plan_name}: {len(validation.fixes_applied)} düzeltme uygulandı")
-
-        # ── KATMAN 3: Puanlama + Çapraz Değerlendirme ──
+        # ── KATMAN 3: Puanlama ──
         for alt in result.all_plans:
             if alt.score is None:
                 alt.score = score_plan(alt.plan, sun_best_direction=sun_best_direction)
 
-        # En iyi 3'ü seç
-        result.best_plans = select_best_plans(result.all_plans, top_n=3)
+        # En iyi 4'ü seç (çeşitlilik korumalı)
+        result.best_plans = select_best_plans(result.all_plans, top_n=4)
 
-        # Çapraz değerlendirme
-        try:
-            cross_review(
-                plans=result.best_plans,
-                claude_api_key=claude_api_key,
-                grok_api_key=grok_api_key,
-            )
-        except Exception as e:
-            logger.error(f"Cross-review hata: {e}")
+        # ── KATMAN 4: Çapraz değerlendirme (API key varsa) ──
+        if claude_api_key or grok_api_key:
+            try:
+                cross_review(
+                    plans=result.best_plans,
+                    claude_api_key=claude_api_key,
+                    grok_api_key=grok_api_key,
+                )
+            except Exception as e:
+                logger.error(f"Cross-review hata: {e}")
 
         # Final puanı
         for alt in result.best_plans:
             own_score = alt.score.total if alt.score else 0
-            alt.final_score = own_score * 0.4 + alt.cross_review_score * 0.6
+            if alt.cross_review_score > 0:
+                alt.final_score = own_score * 0.4 + alt.cross_review_score * 0.6
+            else:
+                alt.final_score = own_score
+
+        # ── KATMAN 5: Hibrit plan ──
+        if len(result.best_plans) >= 2:
+            try:
+                p1, p2 = result.best_plans[0], result.best_plans[1]
+                s1 = p1.score or ScoreBreakdown()
+                s2 = p2.score or ScoreBreakdown()
+                hybrid_result, hybrid_reasoning = generate_hybrid_plan(
+                    p1.plan, p2.plan, s1, s2, bw, bh, ox, oy, sun_best_direction
+                )
+                if hybrid_result and hybrid_result.is_valid and hybrid_result.rooms:
+                    hybrid_fp = hybrid_result.to_floor_plan(bw, bh, ox, oy, apt_type)
+                    hybrid_score = score_plan(hybrid_fp, sun_best_direction=sun_best_direction)
+                    hybrid_alt = PlanAlternatif(
+                        plan=hybrid_fp,
+                        source="hybrid",
+                        plan_name="AI Hibrit Sentez",
+                        strategy=hybrid_result.strategy_description,
+                        reasoning=hybrid_reasoning,
+                        score=hybrid_score,
+                        final_score=hybrid_score.total,
+                    )
+                    result.best_plans.append(hybrid_alt)
+                    logger.info(f"Hibrit plan üretildi: {hybrid_score.total:.1f}/100")
+            except Exception as e:
+                logger.error(f"Hibrit plan hata: {e}")
 
         result.best_plans.sort(key=lambda x: x.final_score, reverse=True)
 
         if result.best_plans:
             logger.info(
-                f"İterasyon {iteration} tamamlandı. "
-                f"En iyi: {result.best_plans[0].final_score:.1f}/100 ({result.best_plans[0].source})"
+                f"İterasyon {iteration}: {len(result.best_plans)} plan, "
+                f"en iyi: {result.best_plans[0].final_score:.1f}/100 ({result.best_plans[0].source})"
             )
 
     # Özet
+    sources = set(p.source for p in result.best_plans)
     if result.best_plans:
         result.summary = (
-            f"{len(result.all_plans)} plan üretildi, en iyi 3 seçildi. "
-            f"En yüksek puan: {result.best_plans[0].final_score:.1f}/100 "
-            f"({result.best_plans[0].source} — {result.best_plans[0].plan_name})"
+            f"{len(result.all_plans)} plan üretildi ({', '.join(sources)}), en iyi {len(result.best_plans)} seçildi. "
+            f"En yüksek: {result.best_plans[0].final_score:.1f}/100 ({result.best_plans[0].source})"
         )
 
     return result

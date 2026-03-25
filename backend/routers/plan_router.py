@@ -169,7 +169,7 @@ async def generate_plan(req: PlanGenerateRequest, request: Request):
             scored_layouts.sort(key=lambda x: x[2].total, reverse=True)
 
             plans = []
-            for i, (layout, fp, sc) in enumerate(scored_layouts[:3]):
+            for i, (layout, fp, sc) in enumerate(scored_layouts[:4]):
                 plans.append(_layout_to_dict(layout, sc, bw, bh, ox, oy))
 
             # Hybrid plan: en iyi 2'nin birleşimi

@@ -166,14 +166,14 @@ export function FloorPlanSVG({
               <WindowSymbol key={`win-${wi}`} win={win} rx={rx} ry={ry} rw={rw} rh={rh} scale={scale} />
             ))}
 
-            {/* Room dimension lines (per room) */}
-            {showDimensions && rw > 40 && rh > 30 && (
+            {/* Room dimension lines (per room) — extension + dimension outside room */}
+            {showDimensions && rw > 35 && rh > 25 && (
               <RoomDimensions rx={rx} ry={ry} rw={rw} rh={rh} width={room.width} height={room.height} />
             )}
 
-            {/* Room label: name + area + (ceiling height) */}
+            {/* Room label: name + area m² + ceiling height */}
             <text
-              x={rx + rw / 2} y={ry + rh / 2 - 5}
+              x={rx + rw / 2} y={ry + rh / 2 - (rh > 40 ? 8 : 4)}
               textAnchor="middle" dominantBaseline="middle"
               fontSize={Math.max(8, Math.min(11, rw / 6))} fontWeight="600"
               fill="#1e293b" fontFamily="var(--font-display)"
@@ -181,13 +181,24 @@ export function FloorPlanSVG({
               {room.name}
             </text>
             <text
-              x={rx + rw / 2} y={ry + rh / 2 + 8}
+              x={rx + rw / 2} y={ry + rh / 2 + 4}
               textAnchor="middle" dominantBaseline="middle"
               fontSize={Math.max(7, Math.min(9, rw / 7))} fontWeight="500"
               fill="#64748b" fontFamily="var(--font-mono)"
             >
               {room.area?.toFixed(1) || (room.width * room.height).toFixed(1)} m²
             </text>
+            {/* Ceiling height label */}
+            {rh > 40 && (
+              <text
+                x={rx + rw / 2} y={ry + rh / 2 + 14}
+                textAnchor="middle" dominantBaseline="middle"
+                fontSize="6.5" fontWeight="400"
+                fill="#94a3b8" fontFamily="var(--font-mono)"
+              >
+                h=3.00
+              </text>
+            )}
 
             {/* Furniture placeholders (very subtle) */}
             <FurniturePlaceholder type={room.type} rx={rx} ry={ry} rw={rw} rh={rh} />
@@ -331,18 +342,51 @@ function WindowSymbol({ win, rx, ry, rw, rh, scale }: {
 function RoomDimensions({ rx, ry, rw, rh, width, height }: {
   rx: number; ry: number; rw: number; rh: number; width: number; height: number
 }) {
-  // Subtle dimension text inside room
+  // Proper architectural dimension lines with extension lines
+  const ext = 5  // extension line overshoot
+  const gap = 3  // gap from wall to dimension line
+  const offset = 10 // dimension line offset from wall
+
   return (
-    <g opacity={0.5}>
-      {/* Width at bottom */}
-      <text x={rx + rw / 2} y={ry + rh - 4} textAnchor="middle"
-        fontSize="6" fill="#94a3b8" fontFamily="var(--font-mono)">
+    <g opacity={0.55}>
+      {/* Width dimension (bottom of room) */}
+      {/* Extension lines */}
+      <line x1={rx} y1={ry + rh + gap} x2={rx} y2={ry + rh + offset + ext}
+        stroke="#64748b" strokeWidth="0.4" />
+      <line x1={rx + rw} y1={ry + rh + gap} x2={rx + rw} y2={ry + rh + offset + ext}
+        stroke="#64748b" strokeWidth="0.4" />
+      {/* Dimension line */}
+      <line x1={rx} y1={ry + rh + offset} x2={rx + rw} y2={ry + rh + offset}
+        stroke="#64748b" strokeWidth="0.5" />
+      {/* Tick marks */}
+      <line x1={rx} y1={ry + rh + offset - 2} x2={rx + 3} y2={ry + rh + offset + 2}
+        stroke="#64748b" strokeWidth="0.6" />
+      <line x1={rx + rw} y1={ry + rh + offset - 2} x2={rx + rw - 3} y2={ry + rh + offset + 2}
+        stroke="#64748b" strokeWidth="0.6" />
+      {/* Width text */}
+      <text x={rx + rw / 2} y={ry + rh + offset + ext + 4} textAnchor="middle"
+        fontSize="6.5" fill="#475569" fontFamily="var(--font-mono)" fontWeight="500">
         {width.toFixed(2)}
       </text>
-      {/* Height on right */}
-      <text x={rx + rw - 4} y={ry + rh / 2} textAnchor="middle"
-        fontSize="6" fill="#94a3b8" fontFamily="var(--font-mono)"
-        transform={`rotate(-90, ${rx + rw - 4}, ${ry + rh / 2})`}>
+
+      {/* Height dimension (right of room) */}
+      {/* Extension lines */}
+      <line x1={rx + rw + gap} y1={ry} x2={rx + rw + offset + ext} y2={ry}
+        stroke="#64748b" strokeWidth="0.4" />
+      <line x1={rx + rw + gap} y1={ry + rh} x2={rx + rw + offset + ext} y2={ry + rh}
+        stroke="#64748b" strokeWidth="0.4" />
+      {/* Dimension line */}
+      <line x1={rx + rw + offset} y1={ry} x2={rx + rw + offset} y2={ry + rh}
+        stroke="#64748b" strokeWidth="0.5" />
+      {/* Tick marks */}
+      <line x1={rx + rw + offset - 2} y1={ry} x2={rx + rw + offset + 2} y2={ry + 3}
+        stroke="#64748b" strokeWidth="0.6" />
+      <line x1={rx + rw + offset - 2} y1={ry + rh} x2={rx + rw + offset + 2} y2={ry + rh - 3}
+        stroke="#64748b" strokeWidth="0.6" />
+      {/* Height text */}
+      <text x={rx + rw + offset + ext + 4} y={ry + rh / 2} textAnchor="middle"
+        fontSize="6.5" fill="#475569" fontFamily="var(--font-mono)" fontWeight="500"
+        transform={`rotate(-90, ${rx + rw + offset + ext + 4}, ${ry + rh / 2})`}>
         {height.toFixed(2)}
       </text>
     </g>
