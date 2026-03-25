@@ -60,3 +60,23 @@ export async function generatePlan(params: Record<string, unknown>) {
     body: JSON.stringify(params),
   })
 }
+
+// ── 3D & Render API ──
+
+export async function getBuildingData(params: Record<string, unknown>) {
+  return request('/api/3d/building-data', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+export async function generateRoomRender(params: Record<string, unknown>) {
+  return request('/api/render/generate', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+export async function getRenderStyles() {
+  return request<Record<string, { isim: string; aciklama: string }>>('/api/render/styles')
+}
