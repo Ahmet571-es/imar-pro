@@ -151,48 +151,45 @@ async def generate_plan(req: PlanGenerateRequest, request: Request):
             summary = result.summary
             mode = "ai"
         else:
-            # ── DEMO MODU: Layout Engine 5 strateji ──
+            # ── DEMO MODU: Layout Engine 5 strateji + hybrid ──
+            from ai.program_bridge import generate_hybrid_plan
+
             room_program = build_room_program(odalar, req.daire_tipi)
             engine = LayoutEngine(width=bw, height=bh, origin_x=ox, origin_y=oy)
             all_results = engine.generate_all_strategies(room_program)
 
-            plans = []
-            for i, layout in enumerate(all_results[:3]):  # En iyi 3
+            # Layout sonuçlarını FloorPlan + Score ile eşleştir
+            scored_layouts = []
+            for layout in all_results:
                 fp = layout.to_floor_plan(bw, bh, ox, oy, req.daire_tipi)
                 sc = score_plan(fp, sun_best_direction=req.sun_direction)
+                scored_layouts.append((layout, fp, sc))
 
-                plans.append({
-                    "plan_name": layout.strategy_name,
-                    "source": "engine",
-                    "strategy": layout.strategy_description,
-                    "reasoning": f"Layout engine '{layout.strategy_name}' stratejisi — {len(layout.rooms)} oda yerleştirildi, {len(layout.unplaced)} yerleşmemiş",
-                    "rooms": [{
-                        "name": r.request.name,
-                        "type": r.request.room_type,
-                        "x": round(r.x, 2),
-                        "y": round(r.y, 2),
-                        "width": round(r.width, 2),
-                        "height": round(r.height, 2),
-                        "area": round(r.area, 1),
-                        "is_exterior": r.is_on_edge(bw, bh, ox, oy),
-                        "facing": r.facing_direction(bw, bh, ox, oy),
-                        "doors": r.to_plan_room(bw, bh, ox, oy).doors,
-                        "windows": r.to_plan_room(bw, bh, ox, oy).windows,
-                    } for r in layout.rooms],
-                    "total_area": round(layout.total_area, 1),
-                    "room_count": len(layout.rooms),
-                    "score": sc.to_dict(),
-                    "score_total": round(sc.total, 1),
-                    "cross_review_score": 0,
-                    "cross_review_notes": "",
-                    "final_score": round(sc.total, 1),
-                    "validation_warnings": layout.warnings,
-                    "validation_fixes": [],
-                })
+            # Puanlara göre sırala
+            scored_layouts.sort(key=lambda x: x[2].total, reverse=True)
+
+            plans = []
+            for i, (layout, fp, sc) in enumerate(scored_layouts[:3]):
+                plans.append(_layout_to_dict(layout, sc, bw, bh, ox, oy))
+
+            # Hybrid plan: en iyi 2'nin birleşimi
+            if len(scored_layouts) >= 2:
+                fp1, sc1 = scored_layouts[0][1], scored_layouts[0][2]
+                fp2, sc2 = scored_layouts[1][1], scored_layouts[1][2]
+                hybrid_result, hybrid_reasoning = generate_hybrid_plan(
+                    fp1, fp2, sc1, sc2, bw, bh, ox, oy, req.sun_direction
+                )
+                if hybrid_result and hybrid_result.is_valid and hybrid_result.rooms:
+                    hybrid_fp = hybrid_result.to_floor_plan(bw, bh, ox, oy, req.daire_tipi)
+                    hybrid_sc = score_plan(hybrid_fp, sun_best_direction=req.sun_direction)
+                    hybrid_dict = _layout_to_dict(hybrid_result, hybrid_sc, bw, bh, ox, oy)
+                    hybrid_dict["reasoning"] = hybrid_reasoning
+                    hybrid_dict["source"] = "hybrid"
+                    plans.append(hybrid_dict)
 
             # En yüksek puanlıyı öne al
             plans.sort(key=lambda p: p["final_score"], reverse=True)
-            summary = f"Layout engine: {len(all_results)} strateji denendi, en iyi {len(plans)} seçildi"
+            summary = f"Layout engine: {len(all_results)} strateji + 1 hibrit, en iyi {len(plans)} seçildi"
             mode = "engine"
 
         return {
@@ -238,4 +235,40 @@ async def score_existing_plan(plan_data: dict):
         "score": score.to_dict(),
         "total": round(score.total, 1),
         "details": score.details,
+    }
+
+
+def _layout_to_dict(layout, sc, bw: float, bh: float, ox: float, oy: float) -> dict:
+    """LayoutResult + ScoreBreakdown → frontend JSON."""
+    return {
+        "plan_name": layout.strategy_name,
+        "source": "engine",
+        "strategy": layout.strategy_description,
+        "reasoning": (
+            f"Layout engine '{layout.strategy_name}' stratejisi — "
+            f"{len(layout.rooms)} oda yerleştirildi"
+            + (f", {len(layout.unplaced)} yerleşmemiş" if layout.unplaced else "")
+        ),
+        "rooms": [{
+            "name": r.request.name,
+            "type": r.request.room_type,
+            "x": round(r.x, 2),
+            "y": round(r.y, 2),
+            "width": round(r.width, 2),
+            "height": round(r.height, 2),
+            "area": round(r.area, 1),
+            "is_exterior": r.is_on_edge(bw, bh, ox, oy),
+            "facing": r.facing_direction(bw, bh, ox, oy),
+            "doors": r.to_plan_room(bw, bh, ox, oy).doors,
+            "windows": r.to_plan_room(bw, bh, ox, oy).windows,
+        } for r in layout.rooms],
+        "total_area": round(layout.total_area, 1),
+        "room_count": len(layout.rooms),
+        "score": sc.to_dict(),
+        "score_total": round(sc.total, 1),
+        "cross_review_score": 0,
+        "cross_review_notes": "",
+        "final_score": round(sc.total, 1),
+        "validation_warnings": layout.warnings,
+        "validation_fixes": [],
     }

@@ -351,6 +351,101 @@ class LayoutEngine:
 
         return None
 
+    def _find_slot_shrink(self, req: RoomRequest, placed: list[PlacedRoom],
+                          prefer_x: float = -1, prefer_y: float = -1,
+                          max_width: float = 0) -> Optional[PlacedRoom]:
+        """Hedef boyutta sığmazsa aşamalı küçülterek yerleştir.
+        Min boyut: req.min_area'nın %90'ı."""
+        mw = max_width if max_width > 0 else self.iw * 0.45
+
+        # Hedef boyuttan başla, %10'luk adımlarla küçült
+        for shrink in [1.0, 0.90, 0.80, 0.70]:
+            area = req.target_area * shrink
+            if area < req.min_area * 0.9:
+                break
+            w, h = self._calc_dims(
+                RoomRequest(name=req.name, room_type=req.room_type, target_area=area),
+                mw, 0.70
+            )
+            result = self._find_slot(req, w, h, placed, prefer_x, prefer_y, scan_step=0.20)
+            if result:
+                return result
+            # Ters oran dene
+            result = self._find_slot(req, h, w, placed, prefer_x, prefer_y, scan_step=0.20)
+            if result:
+                return result
+
+        return None
+
+    def _place_in_zone(self, rooms: list[RoomRequest], placed: list[PlacedRoom],
+                       zone_x: float, zone_y: float, zone_w: float, zone_h: float,
+                       direction: str = "horizontal") -> list[PlacedRoom]:
+        """Bir dikdörtgen bölge içinde oda listesini orantılı yerleştir.
+        
+        Args:
+            direction: "horizontal" (yan yana) veya "vertical" (üst üste)
+        Returns:
+            Yerleştirilen odalar listesi (placed'a da ekler)
+        """
+        if not rooms or zone_w < 1.0 or zone_h < 1.0:
+            return []
+
+        wall = self.PARTITION
+        total_target = sum(r.target_area for r in rooms)
+        zone_area = zone_w * zone_h
+        new_placed = []
+
+        if direction == "horizontal":
+            # Yan yana: her odaya genişlik oranla, yükseklik sabit
+            x_cur = zone_x
+            usable_w = zone_w - wall * (len(rooms) - 1)
+            for room in rooms:
+                share = room.target_area / max(total_target, 1)
+                rw = max(1.5, usable_w * share)
+                rh = min(zone_h, max(room.target_area / rw, zone_h * 0.85))
+                # Sınırları aşma
+                rw = min(rw, zone_x + zone_w - x_cur)
+                rh = min(rh, zone_h)
+                if rw < 1.0 or rh < 1.0:
+                    continue
+                p = self._try_place(room, x_cur, zone_y, rw, rh, placed)
+                if p:
+                    placed.append(p)
+                    new_placed.append(p)
+                    x_cur = p.right + wall
+                else:
+                    # Fallback: shrink
+                    p = self._find_slot_shrink(room, placed, prefer_x=x_cur, prefer_y=zone_y, max_width=rw)
+                    if p:
+                        placed.append(p)
+                        new_placed.append(p)
+                        x_cur = p.right + wall
+        else:
+            # Üst üste: her odaya yükseklik oranla, genişlik sabit
+            y_cur = zone_y
+            usable_h = zone_h - wall * (len(rooms) - 1)
+            for room in rooms:
+                share = room.target_area / max(total_target, 1)
+                rh = max(1.5, usable_h * share)
+                rw = min(zone_w, max(room.target_area / rh, zone_w * 0.85))
+                rh = min(rh, zone_y + zone_h - y_cur)
+                rw = min(rw, zone_w)
+                if rw < 1.0 or rh < 1.0:
+                    continue
+                p = self._try_place(room, zone_x, y_cur, rw, rh, placed)
+                if p:
+                    placed.append(p)
+                    new_placed.append(p)
+                    y_cur = p.top + wall
+                else:
+                    p = self._find_slot_shrink(room, placed, prefer_x=zone_x, prefer_y=y_cur, max_width=rw)
+                    if p:
+                        placed.append(p)
+                        new_placed.append(p)
+                        y_cur = p.top + wall
+
+        return new_placed
+
     def _sort_program(self, program: list[RoomRequest]) -> list[RoomRequest]:
         """Oda programını öncelik sırasına göre sırala."""
         def priority_key(r: RoomRequest):
@@ -440,40 +535,22 @@ class LayoutEngine:
             if p:
                 placed.append(p)
 
-        # ── Kuzey band: Yatak odaları ──
+        # ── Kuzey band: Yatak odaları + ıslak hacimler ──
         yatak_rooms = [r for r in program if r.room_type == "yatak_odasi"]
-        remaining_h = self.iy + self.ih - north_y
-        x_cur = self.ix
-
-        # Yatak odalarını toplam genişliğe orantılı dağıt
-        total_yatak_area = sum(r.target_area for r in yatak_rooms)
-        for yatak in yatak_rooms:
-            # Her yatak odasının genişliğini oranla belirle
-            width_share = (yatak.target_area / max(total_yatak_area, 1)) * (self.iw - wall * len(yatak_rooms))
-            yw = max(3.0, min(self.iw * 0.40, width_share))
-            yh = min(remaining_h, max(yatak.target_area / yw, remaining_h * 0.85))
-            p = self._try_place(yatak, x_cur, north_y, yw, yh, placed)
-            if not p:
-                p = self._find_slot(yatak, yw, yh, placed, prefer_x=x_cur, prefer_y=north_y)
-            if p:
-                placed.append(p)
-                x_cur = p.right + wall
-
-        # ── Islak hacimler: Kuzey bandda kalan alana ──
         wet_rooms = [r for r in program if r.room_type in ("banyo", "wc") and r.name not in [p.request.name for p in placed]]
-        for wr in wet_rooms:
-            ww, wh = self._calc_dims(wr, self.iw * 0.25, 0.60)
-            wh = min(wh, remaining_h)
-            p = self._find_slot(wr, ww, wh, placed, prefer_x=x_cur, prefer_y=north_y)
-            if p:
-                placed.append(p)
+        remaining_h = self.iy + self.ih - north_y
+
+        # Yatak + ıslak hacimleri kuzey zonuna orantılı yerleştir
+        all_north = yatak_rooms + wet_rooms
+        if all_north and remaining_h >= 2.0:
+            self._place_in_zone(all_north, placed,
+                                self.ix, north_y, self.iw, remaining_h, "horizontal")
 
         # ── Kalan odalar ──
         placed_names = {p.request.name for p in placed}
         remaining = [r for r in program if r.name not in placed_names]
         for r in remaining:
-            rw, rh = self._calc_dims(r, self.iw * 0.35)
-            p = self._find_slot(r, rw, rh, placed)
+            p = self._find_slot_shrink(r, placed)
             if p:
                 placed.append(p)
             else:
@@ -728,64 +805,42 @@ class LayoutEngine:
         placed: list[PlacedRoom] = []
         wall = self.PARTITION
 
-        # Güney bandı: salon + yatak odaları + balkon (yapının alt yarısı)
-        sun_rooms = [r for r in program if r.room_type in ("salon", "yatak_odasi", "balkon")]
-        sun_rooms.sort(key=lambda r: -r.target_area)
+        # Güney bandı (%55): salon + yatak + balkon
+        sun_rooms = sorted(
+            [r for r in program if r.room_type in ("salon", "yatak_odasi", "balkon")],
+            key=lambda r: -r.target_area
+        )
+        sun_band_h = self.ih * 0.52
+        cor_h = 1.20
 
-        sun_band_h = self.ih * 0.55
-        x_sun = self.ix
+        # Güney zonuna yerleştir
+        self._place_in_zone(sun_rooms, placed,
+                            self.ix, self.iy, self.iw, sun_band_h, "horizontal")
 
-        for room in sun_rooms:
-            rw = min(self.iw * 0.45, max(3.0, room.target_area / 3.5))
-            rh = min(sun_band_h, room.target_area / rw)
-
-            p = self._try_place(room, x_sun, self.iy, rw, rh, placed)
-            if not p:
-                p = self._find_slot(room, rw, rh, placed, prefer_x=x_sun, prefer_y=self.iy)
-            if p:
-                placed.append(p)
-                x_sun = p.right + wall
-
-        # Koridor (yatay geçiş bandı)
+        # Koridor bandı
         koridor = next((r for r in program if r.room_type == "koridor"), None)
-        sun_band_top = max((p.top for p in placed), default=self.iy + sun_band_h)
-        cor_y = sun_band_top + wall
-
+        cor_y = self.iy + sun_band_h + wall
         if koridor:
-            p = self._try_place(koridor, self.ix, cor_y, self.iw, 1.20, placed)
+            cor_w = min(self.iw, max(koridor.target_area / cor_h, self.iw * 0.65))
+            p = self._try_place(koridor, self.ix, cor_y, cor_w, cor_h, placed)
             if p:
                 placed.append(p)
-                north_y = p.top + wall
-            else:
-                north_y = cor_y + 1.20 + wall
-        else:
-            north_y = cor_y + 1.20 + wall
 
-        # Kuzey bandı: mutfak, banyo, wc, antre
-        north_rooms = [r for r in program if r.room_type in ("mutfak", "banyo", "wc", "antre")]
-        north_rooms.sort(key=lambda r: -r.target_area)
-        x_north = self.ix
-        avail_h = self.iy + self.ih - north_y
+        # Kuzey bandı: mutfak + banyo + wc + antre
+        north_y = cor_y + cor_h + wall
+        north_h = self.iy + self.ih - north_y
+        north_rooms = sorted(
+            [r for r in program if r.room_type in ("mutfak", "banyo", "wc", "antre")],
+            key=lambda r: -r.target_area
+        )
+        self._place_in_zone(north_rooms, placed,
+                            self.ix, north_y, self.iw, north_h, "horizontal")
 
-        for room in north_rooms:
-            rw = min(self.iw * 0.35, max(2.0, room.target_area / 3.0))
-            rh = min(avail_h, room.target_area / rw)
-
-            p = self._try_place(room, x_north, north_y, rw, rh, placed)
-            if not p:
-                p = self._find_slot(room, rw, rh, placed, prefer_x=x_north, prefer_y=north_y)
-            if p:
-                placed.append(p)
-                x_north = p.right + wall
-            else:
-                result.unplaced.append(room.name)
-
-        # Kalan
+        # Kalan odalar
         placed_names = {p.request.name for p in placed}
         for r in program:
             if r.name not in placed_names:
-                rw, rh = self._calc_dims(r, self.iw * 0.30)
-                p = self._find_slot(r, rw, rh, placed)
+                p = self._find_slot_shrink(r, placed)
                 if p:
                     placed.append(p)
                 else:
