@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
+import { toast } from '@/stores/toastStore'
 import { FloorPlanSVG } from './FloorPlanSVG'
 import { generatePlan } from '@/services/api'
 import { formatNumber, cn } from '@/lib/utils'
@@ -116,16 +117,27 @@ const DEFAULT_ODALAR: Record<string, OdaInput[]> = {
 }
 
 export function PlanStep() {
-  const { parselData, hesaplama, imarParams, setStep, markCompleted, parselTipi } = useProjectStore()
+  const {
+    parselData, hesaplama, imarParams, setStep, markCompleted, parselTipi,
+    planResults, selectedPlanIndex, setPlanResults, setSelectedPlanIndex,
+  } = useProjectStore()
 
   const [daireTipi, setDaireTipi] = useState('3+1')
   const [odalar, setOdalar] = useState<OdaInput[]>(DEFAULT_ODALAR['3+1'])
   const [sunDir, setSunDir] = useState('south')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [plans, setPlans] = useState<PlanResult[]>([])
-  const [selectedPlan, setSelectedPlan] = useState(0)
   const [buildableArea, setBuildableArea] = useState<{ width: number; height: number } | null>(null)
+
+  // Read plans from store (restored from project save)
+  const plans: PlanResult[] = (planResults?.alternatives as unknown as PlanResult[]) || []
+  const selectedPlan = selectedPlanIndex
+
+  // Restore buildable area from plans if available
+  useEffect(() => {
+    if (planResults && (planResults as unknown as Record<string, unknown>).buildable_area) {
+      setBuildableArea((planResults as unknown as Record<string, unknown>).buildable_area as { width: number; height: number })
+    }
+  }, [planResults])
 
   const totalM2 = odalar.reduce((s, o) => s + o.m2, 0)
 
@@ -151,8 +163,6 @@ export function PlanStep() {
   const handleGenerate = useCallback(async () => {
     if (!parselData) return
     setLoading(true)
-    setError(null)
-    setPlans([])
 
     try {
       const params: Record<string, unknown> = {
@@ -182,19 +192,28 @@ export function PlanStep() {
         buildable_area: { width: number; height: number }
       }
 
-      setPlans(result.plans || [])
+      // Write to store (persisted)
+      setPlanResults({
+        alternatives: result.plans as never,
+        generation_time_ms: 0,
+        buildable_area: result.buildable_area,
+      } as never)
+      setSelectedPlanIndex(0)
       setBuildableArea(result.buildable_area)
-      setSelectedPlan(0)
 
       if (result.plans && result.plans.length > 0) {
         markCompleted('plan')
+        toast.success('Plan Üretildi', `${result.plans.length} alternatif plan oluşturuldu`)
+      } else {
+        toast.warning('Plan Üretimi', 'Plan üretilemedi, parametreleri kontrol edin')
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Plan üretim hatası')
+      const msg = e instanceof Error ? e.message : 'Plan üretim hatası'
+      toast.error('Plan Üretim Hatası', msg)
     } finally {
       setLoading(false)
     }
-  }, [parselData, parselTipi, imarParams, hesaplama, daireTipi, odalar, sunDir, markCompleted])
+  }, [parselData, parselTipi, imarParams, hesaplama, daireTipi, odalar, sunDir, markCompleted, setPlanResults, setSelectedPlanIndex])
 
   if (!parselData || !hesaplama) {
     return (
@@ -294,12 +313,6 @@ export function PlanStep() {
             {loading ? 'Planlar Üretiliyor...' : 'AI ile Plan Üret'}
           </button>
         </div>
-
-        {error && (
-          <div className="flex items-start gap-2 bg-danger/5 text-danger rounded-lg p-3 text-sm mt-4">
-            <TriangleAlert className="w-4 h-4 mt-0.5 shrink-0" /> {error}
-          </div>
-        )}
       </div>
 
       {/* Results: 3 plans side by side */}
@@ -308,7 +321,7 @@ export function PlanStep() {
           {/* Plan selector tabs */}
           <div className="flex gap-2 mb-4">
             {plans.map((plan, i) => (
-              <button key={i} onClick={() => setSelectedPlan(i)}
+              <button key={i} onClick={() => setSelectedPlanIndex(i)}
                 className={cn(
                   'flex-1 rounded-xl border p-3 transition-all text-left',
                   selectedPlan === i

@@ -1,4 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { useProjectStore } from '@/stores/projectStore'
+import { toast } from '@/stores/toastStore'
 import { calculateEnergy } from '@/services/api'
 import { cn } from '@/lib/utils'
 import {
@@ -27,11 +29,19 @@ interface Props {
 }
 
 export function EnergyPanel({ toplamAlan, katSayisi }: Props) {
+  const { energyData, setEnergyData } = useProjectStore()
   const [data, setData] = useState<EnergyData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [duvarYalitim, setDuvarYalitim] = useState('duvar_8cm_eps')
   const [pencereTipi, setPencereTipi] = useState('isicam')
+
+  // Restore from store
+  useEffect(() => {
+    if (energyData && !data) {
+      setData(energyData as unknown as EnergyData)
+    }
+  }, [energyData, data])
 
   const handleCalc = useCallback(async () => {
     setLoading(true); setError(null)
@@ -43,10 +53,14 @@ export function EnergyPanel({ toplamAlan, katSayisi }: Props) {
         isitma_sistemi: 'dogalgaz_kombi', latitude: 39.93,
       }) as EnergyData
       setData(result)
+      setEnergyData(result as never)
+      toast.success('Enerji Hesaplandı', `Enerji sınıfı: ${result.enerji_sinifi}`)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Enerji hesap hatası')
+      const msg = e instanceof Error ? e.message : 'Enerji hesap hatası'
+      setError(msg)
+      toast.error('Enerji Hesaplama Hatası', msg)
     } finally { setLoading(false) }
-  }, [toplamAlan, katSayisi, duvarYalitim, pencereTipi])
+  }, [toplamAlan, katSayisi, duvarYalitim, pencereTipi, setEnergyData])
 
   const fmt = (n: number) => n.toLocaleString('tr-TR')
 

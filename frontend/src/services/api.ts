@@ -1,8 +1,18 @@
+import { useSettingsStore } from '@/stores/settingsStore'
+
 const API_BASE = import.meta.env.VITE_API_URL || ''
+
+function getApiHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const { claudeApiKey, grokApiKey } = useSettingsStore.getState()
+  if (claudeApiKey) headers['X-Claude-Api-Key'] = claudeApiKey
+  if (grokApiKey) headers['X-Grok-Api-Key'] = grokApiKey
+  return headers
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: getApiHeaders(),
     ...options,
   })
   if (!res.ok) {

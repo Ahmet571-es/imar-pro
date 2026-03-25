@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
+import { toast } from '@/stores/toastStore'
 import { BuildingViewer } from './BuildingViewer'
 import { getBuildingData, generateRoomRender } from '@/services/api'
 import { cn } from '@/lib/utils'
@@ -32,20 +33,44 @@ const RENDER_STYLES = [
   { id: 'luks', label: 'Lüks', emoji: '💎' },
 ]
 
+// Demo fallback rooms (used when no plan data in store)
+const DEMO_ROOMS = [
+  { name: 'Salon', type: 'salon', x: 0.1, y: 0.1, width: 6.5, height: 4.2, is_exterior: true, facing: 'south' },
+  { name: 'Yatak Odası 1', type: 'yatak_odasi', x: 0.1, y: 4.5, width: 4.2, height: 3.5, is_exterior: true, facing: 'west' },
+  { name: 'Yatak Odası 2', type: 'yatak_odasi', x: 4.5, y: 4.5, width: 3.8, height: 3.3, is_exterior: true, facing: 'north' },
+  { name: 'Mutfak', type: 'mutfak', x: 6.8, y: 0.1, width: 3.5, height: 3.0, is_exterior: true, facing: 'east' },
+  { name: 'Banyo', type: 'banyo', x: 6.8, y: 3.3, width: 2.5, height: 2.2, is_exterior: false, facing: '' },
+  { name: 'WC', type: 'wc', x: 6.8, y: 5.7, width: 1.8, height: 1.5, is_exterior: false, facing: '' },
+  { name: 'Antre', type: 'antre', x: 4.5, y: 0.1, width: 2.1, height: 2.5, is_exterior: false, facing: '' },
+  { name: 'Koridor', type: 'koridor', x: 4.5, y: 2.8, width: 1.2, height: 4.8, is_exterior: false, facing: '' },
+  { name: 'Balkon', type: 'balkon', x: 0.1, y: -1.3, width: 4.0, height: 1.2, is_exterior: true, facing: 'south' },
+]
+
 export function ThreeDStep() {
-  const { parselData, hesaplama, imarParams, setStep, markCompleted } = useProjectStore()
+  const {
+    parselData, hesaplama, imarParams, setStep, markCompleted,
+    planResults, selectedPlanIndex,
+  } = useProjectStore()
 
   const [buildingData, setBuildingData] = useState<BuildingData | null>(null)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'3d' | 'render'>('3d')
 
   // Render gallery state
   const [renderStyle, setRenderStyle] = useState('modern_turk')
   const [renders, setRenders] = useState<RenderItem[]>([])
 
-  // Plan data from localStorage or store — we'll use a static fallback for demo
-  const planRooms = useDemoPlanRooms()
+  // Get plan rooms from store, fallback to demo
+  const planRooms = useMemo(() => {
+    if (planResults?.alternatives) {
+      const plans = planResults.alternatives as unknown as { rooms: typeof DEMO_ROOMS }[]
+      const plan = plans[selectedPlanIndex] || plans[0]
+      if (plan?.rooms?.length > 0) return plan.rooms
+    }
+    return DEMO_ROOMS
+  }, [planResults, selectedPlanIndex])
+
+  const isUsingDemoData = !planResults?.alternatives
 
   // Fetch building data
   useEffect(() => {
@@ -53,7 +78,6 @@ export function ThreeDStep() {
 
     const fetchData = async () => {
       setLoading(true)
-      setError(null)
       try {
         const rooms = planRooms.map((r) => ({
           name: r.name, type: r.type,
@@ -76,7 +100,7 @@ export function ThreeDStep() {
 
         setBuildingData(data)
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : '3D veri hatası')
+        toast.error('3D Model Hatası', e instanceof Error ? e.message : '3D veri yüklenemedi')
       } finally {
         setLoading(false)
       }
@@ -87,7 +111,6 @@ export function ThreeDStep() {
 
   // Generate render for a room
   const handleRender = useCallback(async (roomName: string, roomType: string, area: number, facing: string) => {
-    const key = `${roomName}-${renderStyle}`
     setRenders((prev) => {
       const exists = prev.find((r) => r.room_name === roomName && r.style === renderStyle)
       if (exists) {
@@ -116,14 +139,19 @@ export function ThreeDStep() {
             : r
         )
       )
+      if (result.image_url) {
+        toast.success('Render Hazır', `${roomName} render'ı oluşturuldu`)
+      }
     } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Render hatası'
       setRenders((prev) =>
         prev.map((r) =>
           r.room_name === roomName && r.style === renderStyle
-            ? { ...r, loading: false, error: e instanceof Error ? e.message : 'Render hatası' }
+            ? { ...r, loading: false, error: msg }
             : r
         )
       )
+      toast.error('Render Hatası', msg)
     }
   }, [renderStyle])
 
@@ -143,6 +171,11 @@ export function ThreeDStep() {
         <h2 className="text-2xl font-bold text-text">3D Görselleştirme & Render</h2>
         <p className="text-text-muted text-sm mt-1">
           İnteraktif 3D bina modeli ve Grok Imagine fotogerçekçi render
+          {isUsingDemoData && (
+            <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">
+              Demo veri — plan adımından veri bekleniyor
+            </span>
+          )}
         </p>
       </div>
 
@@ -167,11 +200,6 @@ export function ThreeDStep() {
             <div className="h-full flex items-center justify-center">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
               <span className="ml-3 text-text-muted">3D model hazırlanıyor...</span>
-            </div>
-          )}
-          {error && (
-            <div className="h-full flex items-center justify-center text-danger">
-              <TriangleAlert className="w-6 h-6 mr-2" /> {error}
             </div>
           )}
           {buildingData && !loading && (
@@ -271,7 +299,7 @@ export function ThreeDStep() {
           </div>
 
           <div className="bg-surface-alt rounded-xl p-4 text-xs text-text-muted">
-            Render üretimi Grok 2 Image API kullanır. XAI_API_KEY ortam değişkeni gereklidir.
+            Render üretimi Grok 2 Image API kullanır. Ayarlardan XAI API key girilmesi gereklidir.
             Her render ~10 saniye sürer.
           </div>
         </div>
@@ -290,21 +318,4 @@ export function ThreeDStep() {
       </div>
     </div>
   )
-}
-
-// ── Demo plan rooms hook ──
-function useDemoPlanRooms() {
-  // In real app this would come from plan step store.
-  // Using sensible defaults for demo.
-  return [
-    { name: 'Salon', type: 'salon', x: 0.1, y: 0.1, width: 6.5, height: 4.2, is_exterior: true, facing: 'south' },
-    { name: 'Yatak Odası 1', type: 'yatak_odasi', x: 0.1, y: 4.5, width: 4.2, height: 3.5, is_exterior: true, facing: 'west' },
-    { name: 'Yatak Odası 2', type: 'yatak_odasi', x: 4.5, y: 4.5, width: 3.8, height: 3.3, is_exterior: true, facing: 'north' },
-    { name: 'Mutfak', type: 'mutfak', x: 6.8, y: 0.1, width: 3.5, height: 3.0, is_exterior: true, facing: 'east' },
-    { name: 'Banyo', type: 'banyo', x: 6.8, y: 3.3, width: 2.5, height: 2.2, is_exterior: false, facing: '' },
-    { name: 'WC', type: 'wc', x: 6.8, y: 5.7, width: 1.8, height: 1.5, is_exterior: false, facing: '' },
-    { name: 'Antre', type: 'antre', x: 4.5, y: 0.1, width: 2.1, height: 2.5, is_exterior: false, facing: '' },
-    { name: 'Koridor', type: 'koridor', x: 4.5, y: 2.8, width: 1.2, height: 4.8, is_exterior: false, facing: '' },
-    { name: 'Balkon', type: 'balkon', x: 0.1, y: -1.3, width: 4.0, height: 1.2, is_exterior: true, facing: 'south' },
-  ]
 }

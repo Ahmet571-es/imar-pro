@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
+import { toast } from '@/stores/toastStore'
 import { calculateFeasibility } from '@/services/api'
 import { formatNumber, cn } from '@/lib/utils'
 import { EarthquakePanel } from './EarthquakePanel'
@@ -26,10 +27,17 @@ interface FeasibilityData {
 }
 
 export function FeasibilityStep() {
-  const { parselData, hesaplama, imarParams, setStep, markCompleted } = useProjectStore()
+  const { parselData, hesaplama, imarParams, setStep, markCompleted, feasibilityData, setFeasibilityData } = useProjectStore()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<FeasibilityData | null>(null)
+
+  // Restore from store if project was loaded
+  useEffect(() => {
+    if (feasibilityData && !data) {
+      setData(feasibilityData as unknown as FeasibilityData)
+    }
+  }, [feasibilityData, data])
 
   // Form state
   const [il, setIl] = useState('Ankara')
@@ -61,13 +69,17 @@ export function FeasibilityStep() {
         on_satis_orani: onSatis,
       }) as FeasibilityData
       setData(result)
+      setFeasibilityData(result as never)
       markCompleted('feasibility')
+      toast.success('Fizibilite Hesaplandı', `Kâr marjı: %${result.ozet.kar_marji}`)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Hesaplama hatası')
+      const msg = e instanceof Error ? e.message : 'Hesaplama hatası'
+      setError(msg)
+      toast.error('Hesaplama Hatası', msg)
     } finally {
       setLoading(false)
     }
-  }, [hesaplama, imarParams, il, kalite, m2Fiyat, arsaMaliyeti, daireSayisiPerKat, insaatSuresi, onSatis, markCompleted])
+  }, [hesaplama, imarParams, il, kalite, m2Fiyat, arsaMaliyeti, daireSayisiPerKat, insaatSuresi, onSatis, markCompleted, setFeasibilityData])
 
   if (!parselData || !hesaplama) {
     return (

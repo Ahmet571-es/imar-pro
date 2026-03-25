@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
+import { toast } from '@/stores/toastStore'
 import { ParcelSVG } from './ParcelSVG'
 import { calculateRectangle, calculateFromEdges, queryTKGM, getIller } from '@/services/api'
 import { formatNumber } from '@/lib/utils'
@@ -47,8 +48,11 @@ export function ParcelStep() {
       const data = (await calculateRectangle(en, boy)) as ParselData
       setParselData(data)
       setParselTipi('dikdortgen')
+      toast.success('Parsel Hesaplandı', `${(en * boy).toFixed(0)} m² dikdörtgen parsel`)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Hesaplama hatası')
+      const msg = e instanceof Error ? e.message : 'Hesaplama hatası'
+      setError(msg)
+      toast.error('Parsel Hatası', msg)
     } finally {
       setLoading(false)
     }
@@ -63,8 +67,11 @@ export function ParcelStep() {
       const data = (await calculateFromEdges(kenarlar)) as ParselData
       setParselData(data)
       setParselTipi('kenarlar')
+      toast.success('Parsel Hesaplandı', `${kenarlar.length} kenarlı çokgen parsel`)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Hesaplama hatası')
+      const msg = e instanceof Error ? e.message : 'Hesaplama hatası'
+      setError(msg)
+      toast.error('Parsel Hatası', msg)
     } finally {
       setLoading(false)
     }
@@ -76,7 +83,6 @@ export function ParcelStep() {
     try {
       const result = (await queryTKGM(il, ilce, mahalle, ada, parselNo)) as Record<string, unknown>
       if (result.basarili && result.polygon_coords) {
-        // Build parsel data from TKGM result
         setParselData({
           alan_m2: result.alan as number,
           cevre_m: 0,
@@ -88,11 +94,16 @@ export function ParcelStep() {
           bounds: { min_x: 0, min_y: 0, max_x: 0, max_y: 0, width: 0, height: 0 },
         })
         setParselTipi('tkgm')
+        toast.success('TKGM Sorgu Başarılı', `${(result.alan as number).toFixed(0)} m² parsel bulundu`)
       } else {
-        setError((result.hata as string) || 'Parsel bulunamadı')
+        const msg = (result.hata as string) || 'Parsel bulunamadı'
+        setError(msg)
+        toast.warning('TKGM Sorgu', msg)
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'TKGM sorgu hatası')
+      const msg = e instanceof Error ? e.message : 'TKGM sorgu hatası'
+      setError(msg)
+      toast.error('TKGM Hatası', msg)
     } finally {
       setLoading(false)
     }

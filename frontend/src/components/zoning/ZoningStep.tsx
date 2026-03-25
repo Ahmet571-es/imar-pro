@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
+import { toast } from '@/stores/toastStore'
 import { ParcelSVG } from '@/components/parcel/ParcelSVG'
 import { calculateZoning } from '@/services/api'
 import { formatNumber } from '@/lib/utils'
@@ -68,7 +69,9 @@ export function ZoningStep() {
         setCekmeCoords(data.hesaplama.cekme_polygon_coords)
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Hesaplama hatası')
+      const msg = e instanceof Error ? e.message : 'Hesaplama hatası'
+      setError(msg)
+      toast.error('İmar Hesaplama Hatası', msg)
     } finally {
       setLoading(false)
     }

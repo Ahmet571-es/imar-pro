@@ -75,21 +75,20 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handler)
   }, [handleSave])
 
-  // Auto-save on step completion (debounced)
-  const { completedSteps } = useProjectStore()
+  // Auto-save when data changes (isDirty) with debounce
+  const { isDirty: currentDirty } = useProjectStore()
   useEffect(() => {
-    if (!currentProjectId || completedSteps.size === 0) return
+    if (!currentProjectId || !currentDirty) return
     const timer = setTimeout(async () => {
       const data = serialize()
       const success = await updateProject(currentProjectId, data as unknown as Record<string, unknown>)
       if (success) {
         markSaved()
       }
-    }, 2000)
+    }, 3000) // 3 second debounce for auto-save
     return () => clearTimeout(timer)
-    // Only trigger when completedSteps changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [completedSteps.size])
+  }, [currentDirty])
 
   // Loading splash
   if (loading) {

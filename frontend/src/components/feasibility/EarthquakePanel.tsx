@@ -1,4 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { useProjectStore } from '@/stores/projectStore'
+import { toast } from '@/stores/toastStore'
 import { analyzeEarthquake } from '@/services/api'
 import { cn } from '@/lib/utils'
 import {
@@ -22,10 +24,18 @@ interface Props {
 }
 
 export function EarthquakePanel({ katSayisi, binaW, binaH }: Props) {
+  const { earthquakeData, setEarthquakeData } = useProjectStore()
   const [data, setData] = useState<EarthquakeData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [zemin, setZemin] = useState('ZC')
+
+  // Restore from store
+  useEffect(() => {
+    if (earthquakeData && !data) {
+      setData(earthquakeData as unknown as EarthquakeData)
+    }
+  }, [earthquakeData, data])
 
   const handleAnalyze = useCallback(async () => {
     setLoading(true); setError(null)
@@ -36,10 +46,14 @@ export function EarthquakePanel({ katSayisi, binaW, binaH }: Props) {
         bina_genisligi: binaW, bina_derinligi: binaH,
       }) as EarthquakeData
       setData(result)
+      setEarthquakeData(result as never)
+      toast.success('Deprem Analizi', `Risk seviyesi: ${result.parametreler.risk_seviyesi}`)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Deprem analizi hatası')
+      const msg = e instanceof Error ? e.message : 'Deprem analizi hatası'
+      setError(msg)
+      toast.error('Deprem Analizi Hatası', msg)
     } finally { setLoading(false) }
-  }, [katSayisi, binaW, binaH, zemin])
+  }, [katSayisi, binaW, binaH, zemin, setEarthquakeData])
 
   const riskColor = (r: string) => r === 'Dusuk' ? 'text-green-600' : r === 'Orta' ? 'text-yellow-600' : r === 'Yuksek' ? 'text-orange-600' : 'text-red-600'
 
