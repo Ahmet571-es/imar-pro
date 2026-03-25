@@ -1,17 +1,22 @@
 """
-AI Plan API Router — Plan üretimi, puanlama.
+AI Plan API Router — Plan üretimi, puanlama, layout engine entegrasyonu.
+
+API Key'ler iki yerden okunur:
+  1. Request body: claude_api_key, grok_api_key
+  2. HTTP Header: X-Claude-Api-Key, X-Grok-Api-Key (frontend settingsStore'dan)
 """
 
 import os
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import Optional
 
 from core.parcel import Parsel
 from core.zoning import ImarParametreleri, hesapla
+from core.layout_engine import LayoutEngine, build_room_program
 from ai.dual_ai_engine import generate_dual_ai_plans
-from utils.geometry_helpers import polygon_to_coords_list
+from core.plan_scorer import score_plan
 
 logger = logging.getLogger(__name__)
 
@@ -46,14 +51,33 @@ class PlanGenerateRequest(BaseModel):
     odalar: Optional[list[PlanOda]] = None
     sun_direction: str = "south"
 
-    # AI ayarları
+    # AI ayarları (body'den — opsiyonel)
     claude_api_key: Optional[str] = None
     grok_api_key: Optional[str] = None
 
 
+def _extract_api_keys(request: Request, body_claude: str | None, body_grok: str | None) -> tuple[str, str]:
+    """API key'leri header > body > env sırasıyla al."""
+    claude_key = (
+        request.headers.get("X-Claude-Api-Key", "").strip()
+        or (body_claude or "").strip()
+        or os.getenv("ANTHROPIC_API_KEY", "")
+    )
+    grok_key = (
+        request.headers.get("X-Grok-Api-Key", "").strip()
+        or (body_grok or "").strip()
+        or os.getenv("XAI_API_KEY", "")
+    )
+    return claude_key, grok_key
+
+
 @router.post("/generate")
-async def generate_plan(req: PlanGenerateRequest):
-    """AI ile plan üretimi — 3 alternatif döndürür."""
+async def generate_plan(req: PlanGenerateRequest, request: Request):
+    """AI ile plan üretimi — layout engine + dual AI.
+    
+    API key yoksa layout engine demo planları üretir (5 strateji).
+    API key varsa Claude+Grok mimari program üretir → layout engine yerleştirir.
+    """
     try:
         # 1. Parsel oluştur
         if req.parsel_tipi == "dikdortgen" and req.en and req.boy:
@@ -81,12 +105,19 @@ async def generate_plan(req: PlanGenerateRequest):
         else:
             buildable_coords = list(parsel.polygon.exterior.coords)
 
+        # Yapılaşma boyutları
+        xs = [c[0] for c in buildable_coords]
+        ys = [c[1] for c in buildable_coords]
+        bw = max(xs) - min(xs)
+        bh = max(ys) - min(ys)
+        ox = min(xs)
+        oy = min(ys)
+
         # 3. Daire programı
         brut_alan = req.brut_alan or sonuc.kat_basi_net_alan
         if req.odalar:
             odalar = [{"isim": o.isim, "tip": o.tip, "m2": o.m2} for o in req.odalar]
         else:
-            # Varsayılan oda programı
             from config.room_defaults import get_default_rooms
             default_rooms = get_default_rooms(req.daire_tipi)
             odalar = [
@@ -100,32 +131,79 @@ async def generate_plan(req: PlanGenerateRequest):
             "odalar": odalar,
         }
 
-        # 4. Dual AI plan üretimi
-        claude_key = req.claude_api_key or os.getenv("ANTHROPIC_API_KEY", "")
-        grok_key = req.grok_api_key or os.getenv("XAI_API_KEY", "")
+        # 4. API key'leri al
+        claude_key, grok_key = _extract_api_keys(request, req.claude_api_key, req.grok_api_key)
+        has_ai = bool(claude_key) or bool(grok_key)
 
-        result = generate_dual_ai_plans(
-            buildable_polygon_coords=buildable_coords,
-            apartment_program=apartment_program,
-            dataset_rules={},
-            sun_best_direction=req.sun_direction,
-            claude_api_key=claude_key,
-            grok_api_key=grok_key,
-            max_iterations=1,
-        )
+        # 5. Plan üretimi
+        if has_ai:
+            # ── AI MODU: Dual AI + Layout Engine ──
+            result = generate_dual_ai_plans(
+                buildable_polygon_coords=buildable_coords,
+                apartment_program=apartment_program,
+                dataset_rules={},
+                sun_best_direction=req.sun_direction,
+                claude_api_key=claude_key,
+                grok_api_key=grok_key,
+                max_iterations=1,
+            )
+            plans = result.to_dict()["best_plans"]
+            summary = result.summary
+            mode = "ai"
+        else:
+            # ── DEMO MODU: Layout Engine 5 strateji ──
+            room_program = build_room_program(odalar, req.daire_tipi)
+            engine = LayoutEngine(width=bw, height=bh, origin_x=ox, origin_y=oy)
+            all_results = engine.generate_all_strategies(room_program)
 
-        # 5. Yapılaşma sınırlarını da döndür
-        xs = [c[0] for c in buildable_coords]
-        ys = [c[1] for c in buildable_coords]
+            plans = []
+            for i, layout in enumerate(all_results[:3]):  # En iyi 3
+                fp = layout.to_floor_plan(bw, bh, ox, oy, req.daire_tipi)
+                sc = score_plan(fp, sun_best_direction=req.sun_direction)
+
+                plans.append({
+                    "plan_name": layout.strategy_name,
+                    "source": "engine",
+                    "strategy": layout.strategy_description,
+                    "reasoning": f"Layout engine '{layout.strategy_name}' stratejisi — {len(layout.rooms)} oda yerleştirildi, {len(layout.unplaced)} yerleşmemiş",
+                    "rooms": [{
+                        "name": r.request.name,
+                        "type": r.request.room_type,
+                        "x": round(r.x, 2),
+                        "y": round(r.y, 2),
+                        "width": round(r.width, 2),
+                        "height": round(r.height, 2),
+                        "area": round(r.area, 1),
+                        "is_exterior": r.is_on_edge(bw, bh, ox, oy),
+                        "facing": r.facing_direction(bw, bh, ox, oy),
+                        "doors": r.to_plan_room(bw, bh, ox, oy).doors,
+                        "windows": r.to_plan_room(bw, bh, ox, oy).windows,
+                    } for r in layout.rooms],
+                    "total_area": round(layout.total_area, 1),
+                    "room_count": len(layout.rooms),
+                    "score": sc.to_dict(),
+                    "score_total": round(sc.total, 1),
+                    "cross_review_score": 0,
+                    "cross_review_notes": "",
+                    "final_score": round(sc.total, 1),
+                    "validation_warnings": layout.warnings,
+                    "validation_fixes": [],
+                })
+
+            # En yüksek puanlıyı öne al
+            plans.sort(key=lambda p: p["final_score"], reverse=True)
+            summary = f"Layout engine: {len(all_results)} strateji denendi, en iyi {len(plans)} seçildi"
+            mode = "engine"
 
         return {
-            "plans": result.to_dict()["best_plans"],
-            "all_plans_count": result.to_dict()["all_plans_count"],
-            "summary": result.summary,
+            "plans": plans,
+            "all_plans_count": len(plans),
+            "summary": summary,
+            "mode": mode,
             "buildable_area": {
                 "coords": [{"x": round(c[0], 2), "y": round(c[1], 2)} for c in buildable_coords],
-                "width": round(max(xs) - min(xs), 2),
-                "height": round(max(ys) - min(ys), 2),
+                "width": round(bw, 2),
+                "height": round(bh, 2),
                 "area": round(sonuc.cekme_sonrasi_alan, 2),
             },
             "apartment_program": apartment_program,
@@ -141,7 +219,7 @@ async def generate_plan(req: PlanGenerateRequest):
 @router.post("/score")
 async def score_existing_plan(plan_data: dict):
     """Mevcut planı puanla."""
-    from core.plan_scorer import score_plan, FloorPlan, PlanRoom
+    from core.plan_scorer import FloorPlan, PlanRoom
 
     rooms = []
     for r in plan_data.get("rooms", []):
