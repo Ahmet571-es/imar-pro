@@ -155,7 +155,7 @@
 
 ---
 
-### SEVİYE 3 — 3D Mimari Görselleştirme (Enscape/Twinmotion seviyesi) → Hedef: 9/10
+### SEVİYE 3 — 3D/4D/5D BIM Görselleştirme (Enscape/Twinmotion + Navisworks seviyesi) → Hedef: 9.5/10
 
 #### 3A. Veri Akışı + Bina Geometri Motoru
 15. **Plan → 3D tam entegrasyon** — projectStore'daki selectedPlanRooms → BuildingViewer. Plan değişince 3D anında güncellenir
@@ -197,6 +197,30 @@
 31. **4 stil yan yana** — Modern Türk / Klasik / Minimalist / Lüks — aynı oda, 4 stil slider karşılaştırma
 32. **Render cache** — üretilen render'lar store'da tutulur, tekrar üretmeye gerek yok
 33. **Batch render** — "Tüm Odaları Render Et" tek butonla sıralı üretim + progress bar
+
+#### 3I. 4D İnşaat Zaman Simülasyonu (BIM 4D)
+34. **Zaman slider** (1-30 ay): Slider'ı sürükle → 3D modelde o ana kadar inşa edilen kısım solid, geri kalanı wireframe/şeffaf.
+    İnşaat faz tanımları:
+    - Ay 1-2: Hafriyat + temel (sadece temel bandı ve kazık görünür)
+    - Ay 2-4: Kaba inşaat zemin + 1. kat (kolon + döşeme)
+    - Ay 4-8: Kaba inşaat üst katlar (her ~1.5 ayda bir kat yükselir)
+    - Ay 8-10: Çatı + dış duvar örümü
+    - Ay 10-13: Dış cephe kaplama + mantolama (dış cephe renk değişimi)
+    - Ay 13-16: İç ince işler (iç duvarlar opak olur, döşeme kaplama)
+    - Ay 16-18: Tesisat + son kontroller (tam model)
+35. **Play/pause animasyon**: Otomatik ileri sarma butonu — temel → çatı → bitmiş bina, 15 saniyelik sinematik animasyon. Kamera açısı da inşaatla birlikte değişir (alt seviyeden başlar, bina yükseldikçe kamera da yükselir)
+36. **Faz renklendirme**: Her inşaat fazı farklı renk — kaba inşaat: beton gri, dış cephe: turuncu, ince inşaat: açık mavi. Legend ile hangi renk ne anlama geliyor gösterilir
+37. **Nakit akışı senkronizasyon**: Zaman slider'ı sürüklenirken alt panelde o aya kadar harcanan kümülatif maliyet gösterilir — "Ay 8: ₺12.4M harcandı (toplam %45)" — 3D model ve finansal veri aynı anda ilerler
+
+#### 3J. 5D Maliyet Görselleştirmesi (BIM 5D)
+38. **Eleman bazlı maliyet**: 3D modeldeki her elemanın maliyet verisi var (backend'den gelen maliyet kalemleriyle eşleştirilmiş):
+    - Döşeme tıkla → "3. Kat Döşeme: ₺285,000 (Betonarme %37 payından)"
+    - Dış duvar tıkla → "Güney Cephe Dış Duvar: ₺142,000 (Dış Cephe %9 payından)"
+    - Pencere tıkla → "Salon Penceresi: ₺18,500 (İnce İnşaat %27 payından)"
+    - Çatı tıkla → "Çatı Kaplama: ₺95,000"
+39. **Maliyet ısı haritası modu** (5D Heatmap): Tüm elemanlara maliyet büyüklüğüne göre renk atanır — en pahalı elemanlar koyu kırmızı, en ucuz koyu yeşil. Yan panelde maliyet sıralaması listesi. Görsel olarak paranın nereye gittiğini anında anlarsın
+40. **What-if maliyet analizi**: 3D üzerinden "bu duvarı 5cm daha kalın yalıtım yapsam?" → maliyet farkını anında gösterir. Veya "pencere tipini Low-E'ye değiştirsem?" → enerji + maliyet etkisini 3D üzerinde görselleştirir
+41. **Kümülatif maliyet göstergesi**: Ekran köşesinde her zaman görünen "Toplam Maliyet: ₺42.8M" sayacı — 4D slider'da ilerledikçe veya elemanlar değiştirildikçe güncellenir
 
 ---
 
@@ -248,7 +272,7 @@
 - [ ] Doğal dil giriş → oda programı otomatik
 - [ ] Radar chart 9 boyutlu karşılaştırma
 
-**Seviye 3 (9/10):**
+**Seviye 3 (9.5/10):**
 - [ ] Plan adımında alternatif seçilince 3D 2 saniye içinde güncellenir
 - [ ] 60fps orbit (desktop)
 - [ ] 4+ farklı PBR materyal texture ile
@@ -261,6 +285,12 @@
 - [ ] 6 görünüm modu toggle
 - [ ] Grok Imagine gerçek render üretir
 - [ ] 4 stil karşılaştırma çalışır
+- [ ] **4D: Zaman slider (1-30 ay) ile inşaat faz animasyonu çalışır**
+- [ ] **4D: Play butonu sinematik 15sn animasyon oynatır**
+- [ ] **4D: Nakit akışı 3D ile senkronize (slider sürüklenince maliyet güncellenir)**
+- [ ] **5D: 3D eleman tıklama → maliyet bilgisi tooltip gösterir**
+- [ ] **5D: Maliyet ısı haritası modu (kırmızı=pahalı, yeşil=ucuz)**
+- [ ] **5D: Kümülatif maliyet sayacı ekranda görünür**
 
 **Seviye 4 (9/10):**
 - [ ] PDF rapor 15+ sayfa, grafik embed, profesyonel tipografi
@@ -282,10 +312,10 @@
 |--------|--------|-------|--------|
 | 1 | Altyapı + store + auto-save + toast + API key yönetimi | 9/10 | 1 sohbet |
 | 2 | Layout engine + AI prompt + iteratif döngü + cross-review + SVG + radar + doğal dil | 9/10 | 2-3 sohbet |
-| 3 | Bina geometri + PBR + post-processing + 6 mod + interaktivite + çevre + Grok render | 9/10 | 3-4 sohbet |
+| 3 | Bina geometri + PBR + post-processing + 6 mod + interaktivite + çevre + Grok render + **4D inşaat simülasyonu + 5D maliyet görselleştirme** | 9.5/10 | 4-5 sohbet |
 | 4 | PDF rapor (15+ sayfa) + daire karması + otomatik tetikleme + AI yorum | 9/10 | 1-2 sohbet |
 | 5 | Export toolbar + AFAD 81 il + kolon grid SVG + landing + responsive | 8.5/10 | 1-2 sohbet |
-| **Toplam** | **44 madde, 5 seviye** | **Min 8.5** | **8-12 sohbet** |
+| **Toplam** | **52 madde, 5 seviye** | **Min 8.5** | **9-13 sohbet** |
 
 ---
 
