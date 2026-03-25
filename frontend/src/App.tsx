@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { WizardLayout } from '@/components/layout/WizardLayout'
 import { ParcelStep } from '@/components/parcel/ParcelStep'
 import { ZoningStep } from '@/components/zoning/ZoningStep'
@@ -7,8 +7,14 @@ import { ThreeDStep } from '@/components/three/ThreeDStep'
 import { FeasibilityStep } from '@/components/feasibility/FeasibilityStep'
 import { AuthPage } from '@/components/auth/AuthPage'
 import { ProjectsDashboard } from '@/components/projects/ProjectsDashboard'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
+import { ToastContainer } from '@/components/ui/ToastContainer'
+import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { useProjectStore } from '@/stores/projectStore'
+import { useProjectListStore } from '@/stores/projectListStore'
 import { useAuthStore } from '@/stores/authStore'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { toast } from '@/stores/toastStore'
 import { Loader2 } from 'lucide-react'
 
 type AppView = 'auth' | 'projects' | 'wizard'
@@ -25,23 +31,65 @@ function WizardRouter() {
   }
 }
 
-export default function App() {
+function AppContent() {
   const { user, loading, initialize } = useAuthStore()
+  const { loadFromStorage } = useSettingsStore()
+  const { currentProjectId, serialize, markSaved, isDirty } = useProjectStore()
+  const { updateProject } = useProjectListStore()
   const [view, setView] = useState<AppView>('auth')
 
+  // Initialize auth + settings
   useEffect(() => {
     initialize()
-  }, [initialize])
+    loadFromStorage()
+  }, [initialize, loadFromStorage])
 
+  // Set view based on auth state
   useEffect(() => {
     if (!loading) {
-      if (user) {
-        setView('projects')
-      } else {
-        setView('auth')
-      }
+      setView(user ? 'projects' : 'auth')
     }
   }, [user, loading])
+
+  // Ctrl+S keyboard shortcut for save
+  const handleSave = useCallback(async () => {
+    if (!currentProjectId || !isDirty) return
+    const data = serialize()
+    const success = await updateProject(currentProjectId, data as unknown as Record<string, unknown>)
+    if (success) {
+      markSaved()
+      toast.success('Kaydedildi', 'Proje başarıyla güncellendi')
+    } else {
+      toast.error('Kayıt Hatası', 'Proje kaydedilemedi')
+    }
+  }, [currentProjectId, isDirty, serialize, updateProject, markSaved])
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault()
+        handleSave()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [handleSave])
+
+  // Auto-save on step completion (debounced)
+  const { completedSteps } = useProjectStore()
+  useEffect(() => {
+    if (!currentProjectId || completedSteps.size === 0) return
+    const timer = setTimeout(async () => {
+      const data = serialize()
+      const success = await updateProject(currentProjectId, data as unknown as Record<string, unknown>)
+      if (success) {
+        markSaved()
+      }
+    }, 2000)
+    return () => clearTimeout(timer)
+    // Only trigger when completedSteps changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completedSteps.size])
 
   // Loading splash
   if (loading) {
@@ -73,5 +121,15 @@ export default function App() {
     <WizardLayout onBackToProjects={() => setView('projects')}>
       <WizardRouter />
     </WizardLayout>
+  )
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppContent />
+      <ToastContainer />
+      <SettingsDialog />
+    </ErrorBoundary>
   )
 }

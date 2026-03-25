@@ -2,19 +2,38 @@ import { useEffect, useState } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { useProjectListStore, type SavedProject } from '@/stores/projectListStore'
 import { useProjectStore } from '@/stores/projectStore'
-import { cn } from '@/lib/utils'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { toast } from '@/stores/toastStore'
 import {
   Plus, FolderOpen, Trash2, Clock, MapPin, Loader2, Building2, LogOut, User,
+  Settings, CheckCircle2, Layers,
 } from 'lucide-react'
 
 interface Props {
   onOpenProject: () => void
 }
 
+function getProjectSummary(data: Record<string, unknown>): string {
+  const parts: string[] = []
+  if (data.parselData) parts.push('Parsel')
+  if (data.hesaplama) parts.push('İmar')
+  if (data.planResults) parts.push('Plan')
+  if (data.feasibilityData) parts.push('Fizibilite')
+  if (data.earthquakeData) parts.push('Deprem')
+  if (data.energyData) parts.push('Enerji')
+  return parts.length > 0 ? parts.join(' → ') : 'Boş proje'
+}
+
+function getCompletedCount(data: Record<string, unknown>): number {
+  const steps = data.completedSteps as string[] | undefined
+  return steps?.length || 0
+}
+
 export function ProjectsDashboard({ onOpenProject }: Props) {
   const { user, signOut, isDemo } = useAuthStore()
   const { projects, loadingProjects, fetchProjects, saveProject, deleteProject } = useProjectListStore()
   const projectStore = useProjectStore()
+  const { openSettings } = useSettingsStore()
   const [newName, setNewName] = useState('')
   const [showNew, setShowNew] = useState(false)
 
@@ -24,28 +43,52 @@ export function ProjectsDashboard({ onOpenProject }: Props) {
 
   const handleCreate = async () => {
     if (!user || !newName.trim()) return
-    await saveProject(user.id, newName.trim(), {})
+
+    // Reset store for new project
+    projectStore.resetProject()
+
+    const id = await saveProject(user.id, newName.trim(), {})
+    if (id) {
+      projectStore.setCurrentProject(id, newName.trim())
+      projectStore.setStep('parcel')
+      toast.success('Proje Oluşturuldu', newName.trim())
+      onOpenProject()
+    } else {
+      toast.error('Hata', 'Proje oluşturulamadı')
+    }
     setNewName('')
     setShowNew(false)
-    // Open the new project immediately
-    projectStore.setStep('parcel')
-    onOpenProject()
   }
 
   const handleOpen = (project: SavedProject) => {
-    // Restore project data into store
-    const d = project.data || {}
-    if (d.parselData) projectStore.setParselData(d.parselData as never)
-    if (d.imarParams) projectStore.setImarParams(d.imarParams as never)
-    if (d.hesaplama) projectStore.setHesaplama(d.hesaplama as never)
-    projectStore.setStep((d.currentStep as never) || 'parcel')
+    // Reset first, then restore all saved state
+    projectStore.resetProject()
+    projectStore.setCurrentProject(project.id, project.name)
+    projectStore.restore(project.data as Record<string, unknown>)
+
+    // Ensure we land on the right step
+    const savedStep = project.data?.currentStep as string | undefined
+    if (savedStep) {
+      projectStore.setStep(savedStep as never)
+    }
+
+    toast.info('Proje Açıldı', project.name)
     onOpenProject()
   }
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Bu projeyi silmek istediğinize emin misiniz?')) {
-      await deleteProject(id)
+  const handleDelete = async (id: string, name: string) => {
+    if (confirm(`"${name}" projesini silmek istediğinize emin misiniz?`)) {
+      const success = await deleteProject(id)
+      if (success) {
+        toast.success('Silindi', `"${name}" projesi silindi`)
+      }
     }
+  }
+
+  const handleQuickStart = () => {
+    projectStore.resetProject()
+    projectStore.setStep('parcel')
+    onOpenProject()
   }
 
   const formatDate = (iso: string) => {
@@ -73,6 +116,13 @@ export function ProjectsDashboard({ onOpenProject }: Props) {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={openSettings}
+              className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              title="Ayarlar"
+            >
+              <Settings className="w-4 h-4 text-white/70" />
+            </button>
             <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-1.5">
               <User className="w-4 h-4 text-white/60" />
               <span className="text-sm">{user?.name || user?.email}</span>
@@ -140,46 +190,59 @@ export function ProjectsDashboard({ onOpenProject }: Props) {
         {/* Project grid */}
         {projects.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {projects.map((project) => (
-              <div key={project.id}
-                className="bg-white rounded-xl border border-border hover:border-primary/30 hover:shadow-md transition-all group cursor-pointer"
-                onClick={() => handleOpen(project)}>
-                <div className="p-5">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <MapPin className="w-5 h-5 text-primary" />
+            {projects.map((project) => {
+              const completedCount = getCompletedCount(project.data || {})
+              const summary = getProjectSummary(project.data || {})
+
+              return (
+                <div key={project.id}
+                  className="bg-white rounded-xl border border-border hover:border-primary/30 hover:shadow-md transition-all group cursor-pointer"
+                  onClick={() => handleOpen(project)}>
+                  <div className="p-5">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <MapPin className="w-5 h-5 text-primary" />
+                      </div>
+                      <button onClick={(e) => { e.stopPropagation(); handleDelete(project.id, project.name) }}
+                        className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-danger/10 rounded-lg transition-all"
+                        title="Sil">
+                        <Trash2 className="w-4 h-4 text-danger" />
+                      </button>
                     </div>
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(project.id) }}
-                      className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-danger/10 rounded-lg transition-all"
-                      title="Sil">
-                      <Trash2 className="w-4 h-4 text-danger" />
-                    </button>
+                    <h3 className="font-semibold text-text mb-1 truncate">{project.name}</h3>
+                    <div className="flex items-center gap-1.5 text-xs text-text-muted mb-2">
+                      <Clock className="w-3 h-3" />
+                      {formatDate(project.updated_at)}
+                    </div>
+                    {/* Progress indicator */}
+                    {completedCount > 0 && (
+                      <div className="flex items-center gap-1.5 text-xs text-success">
+                        <CheckCircle2 className="w-3 h-3" />
+                        {completedCount}/5 adım tamamlandı
+                      </div>
+                    )}
                   </div>
-                  <h3 className="font-semibold text-text mb-1 truncate">{project.name}</h3>
-                  <div className="flex items-center gap-1.5 text-xs text-text-muted">
-                    <Clock className="w-3 h-3" />
-                    {formatDate(project.updated_at)}
+                  <div className="border-t border-border px-5 py-2.5 flex items-center justify-between">
+                    <span className="text-xs text-text-light flex items-center gap-1.5">
+                      <Layers className="w-3 h-3" />
+                      {summary}
+                    </span>
+                    <FolderOpen className="w-4 h-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
                 </div>
-                <div className="border-t border-border px-5 py-2.5 flex items-center justify-between">
-                  <span className="text-xs text-text-light">
-                    {project.data?.parselData ? 'Parsel tanımlı' : 'Boş proje'}
-                  </span>
-                  <FolderOpen className="w-4 h-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
-        {/* Quick start - no name needed */}
+        {/* Quick start */}
         <div className="mt-8 bg-gradient-to-r from-primary/5 to-accent/5 rounded-xl p-6 border border-primary/10">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-semibold text-text mb-1">Hızlı Başlangıç</h3>
               <p className="text-sm text-text-muted">Proje oluşturmadan doğrudan parsel girişine geç</p>
             </div>
-            <button onClick={() => { projectStore.setStep('parcel'); onOpenProject() }}
+            <button onClick={handleQuickStart}
               className="btn-primary flex items-center gap-2">
               Başla <Plus className="w-4 h-4" />
             </button>
