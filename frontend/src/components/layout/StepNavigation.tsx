@@ -8,7 +8,7 @@ const STEPS: StepInfo[] = [
   { id: 'zoning', label: 'Zoning', labelTr: 'İmar', icon: 'Building2', path: 'zoning', phase: 1, enabled: true },
   { id: 'plan', label: 'AI Plan', labelTr: 'AI Plan', icon: 'BrainCircuit', path: 'plan', phase: 2, enabled: true },
   { id: '3d', label: '3D & Render', labelTr: '3D & Render', icon: 'Box', path: '3d', phase: 3, enabled: true },
-  { id: 'feasibility', label: 'Feasibility', labelTr: 'Fizibilite', icon: 'BarChart3', path: 'feasibility', phase: 4, enabled: false },
+  { id: 'feasibility', label: 'Feasibility', labelTr: 'Fizibilite', icon: 'BarChart3', path: 'feasibility', phase: 4, enabled: true },
 ]
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {

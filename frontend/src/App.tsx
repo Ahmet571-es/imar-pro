@@ -3,7 +3,7 @@ import { ParcelStep } from '@/components/parcel/ParcelStep'
 import { ZoningStep } from '@/components/zoning/ZoningStep'
 import { PlanStep } from '@/components/plan/PlanStep'
 import { ThreeDStep } from '@/components/three/ThreeDStep'
-import { FeasibilityStep } from '@/components/wizard/PlaceholderSteps'
+import { FeasibilityStep } from '@/components/feasibility/FeasibilityStep'
 import { useProjectStore } from '@/stores/projectStore'
 
 function WizardRouter() {

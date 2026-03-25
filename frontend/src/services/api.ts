@@ -80,3 +80,12 @@ export async function generateRoomRender(params: Record<string, unknown>) {
 export async function getRenderStyles() {
   return request<Record<string, { isim: string; aciklama: string }>>('/api/render/styles')
 }
+
+// ── Feasibility API ──
+
+export async function calculateFeasibility(params: Record<string, unknown>) {
+  return request('/api/feasibility/calculate', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
