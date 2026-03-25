@@ -2,11 +2,13 @@ import { useState, useCallback, useEffect } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
 import { toast } from '@/stores/toastStore'
 import { FloorPlanSVG } from './FloorPlanSVG'
+import { PlanRadarChart } from './PlanRadarChart'
 import { generatePlan } from '@/services/api'
 import { formatNumber, cn } from '@/lib/utils'
 import {
   BrainCircuit, ArrowLeft, ArrowRight, Loader2, TriangleAlert,
   Plus, Trash2, Sparkles, Trophy, AlertCircle, CheckCircle2, Info,
+  MessageSquareText, Grid3x3,
 } from 'lucide-react'
 
 interface OdaInput {
@@ -127,6 +129,9 @@ export function PlanStep() {
   const [sunDir, setSunDir] = useState('south')
   const [loading, setLoading] = useState(false)
   const [buildableArea, setBuildableArea] = useState<{ width: number; height: number } | null>(null)
+  const [inputMode, setInputMode] = useState<'form' | 'nlp'>('form')
+  const [nlpText, setNlpText] = useState('')
+  const [showAxisGrid, setShowAxisGrid] = useState(false)
 
   // Read plans from store (restored from project save)
   const plans: PlanResult[] = (planResults?.alternatives as unknown as PlanResult[]) || []
@@ -159,6 +164,57 @@ export function PlanStep() {
   const removeOda = (index: number) => {
     setOdalar(odalar.filter((_, i) => i !== index))
   }
+
+  // ── NLP Parser: doğal dil → oda programı ──
+  const parseNlpInput = useCallback(() => {
+    if (!nlpText.trim()) return
+    const text = nlpText.toLowerCase()
+
+    // Daire tipini algıla
+    const tipMatch = text.match(/(\d)\s*\+\s*(\d)/)
+    if (tipMatch) {
+      const tip = `${tipMatch[1]}+${tipMatch[2]}`
+      if (DEFAULT_ODALAR[tip]) {
+        setDaireTipi(tip)
+        const newOdalar = [...DEFAULT_ODALAR[tip]]
+
+        // "geniş salon" → salon m2 artır
+        if (text.includes('geniş salon') || text.includes('büyük salon')) {
+          const salon = newOdalar.find(o => o.tip === 'salon')
+          if (salon) salon.m2 = Math.round(salon.m2 * 1.25)
+        }
+
+        // "açık mutfak" veya "açık plan mutfak" → mutfak m2 artır
+        if (text.includes('açık mutfak') || text.includes('açık plan')) {
+          const mutfak = newOdalar.find(o => o.tip === 'mutfak')
+          if (mutfak) mutfak.m2 = Math.round(mutfak.m2 * 1.3)
+        }
+
+        // "2 balkon" veya "iki balkon" kontrolü
+        const balkonMatch = text.match(/(\d+)\s*balkon/)
+        if (balkonMatch) {
+          const count = parseInt(balkonMatch[1])
+          const existing = newOdalar.filter(o => o.tip === 'balkon').length
+          if (count > existing) {
+            for (let i = existing; i < count; i++) {
+              newOdalar.push({ isim: `Balkon ${i + 1}`, tip: 'balkon', m2: 4 })
+            }
+          }
+        }
+
+        // "büyük yatak" → ilk yatak odası m2 artır
+        if (text.includes('büyük yatak') || text.includes('geniş yatak')) {
+          const yatak = newOdalar.find(o => o.tip === 'yatak_odasi')
+          if (yatak) yatak.m2 = Math.round(yatak.m2 * 1.2)
+        }
+
+        setOdalar(newOdalar)
+        toast.success('Doğal Dil Ayrıştırıldı', `${tip} daire programı oluşturuldu`)
+      }
+    } else {
+      toast.warning('Ayrıştırma', 'Daire tipi bulunamadı. Örnek: "3+1, geniş salon, açık mutfak"')
+    }
+  }, [nlpText])
 
   const handleGenerate = useCallback(async () => {
     if (!parselData) return
@@ -245,6 +301,19 @@ export function PlanStep() {
             <h3 className="font-semibold">Daire Programı</h3>
           </div>
           <div className="flex items-center gap-3 text-sm">
+            {/* Input mode toggle */}
+            <div className="flex gap-1 p-0.5 bg-surface-alt rounded-md mr-2">
+              <button onClick={() => setInputMode('form')}
+                className={cn('px-2 py-1 rounded text-xs font-medium transition-all flex items-center gap-1',
+                  inputMode === 'form' ? 'bg-white text-primary shadow-sm' : 'text-text-muted')}>
+                <Grid3x3 className="w-3 h-3" /> Form
+              </button>
+              <button onClick={() => setInputMode('nlp')}
+                className={cn('px-2 py-1 rounded text-xs font-medium transition-all flex items-center gap-1',
+                  inputMode === 'nlp' ? 'bg-white text-primary shadow-sm' : 'text-text-muted')}>
+                <MessageSquareText className="w-3 h-3" /> Doğal Dil
+              </button>
+            </div>
             <span className="text-text-muted">Net alan:</span>
             <span className="font-mono font-bold text-primary">{formatNumber(hesaplama.kat_basi_net_alan)} m²</span>
             <span className="text-text-muted">|</span>
@@ -255,6 +324,29 @@ export function PlanStep() {
           </div>
         </div>
 
+        {/* NLP Input Mode */}
+        {inputMode === 'nlp' && (
+          <div className="mb-4">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={nlpText}
+                onChange={(e) => setNlpText(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && parseNlpInput()}
+                className="input-field flex-1"
+                placeholder='Örn: "3+1, geniş salon, açık mutfak, 2 balkon"'
+              />
+              <button onClick={parseNlpInput} className="btn-primary text-sm px-4">
+                Ayrıştır
+              </button>
+            </div>
+            <p className="text-[11px] text-text-light mt-1.5">
+              Daire tipini (3+1, 2+1 vb.) ve tercihleri (geniş salon, açık mutfak, büyük yatak) yazın
+            </p>
+          </div>
+        )}
+
+        {/* Form Input Mode */}
         <div className="flex flex-wrap items-center gap-3 mb-4">
           {/* Daire tipi */}
           <div className="flex gap-1 p-1 bg-surface-alt rounded-lg">
@@ -353,6 +445,13 @@ export function PlanStep() {
               {/* Left: SVG plan */}
               <div className="lg:col-span-2">
                 <div className="bg-white rounded-xl border border-border p-4">
+                  <div className="flex items-center justify-end gap-2 mb-2">
+                    <label className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer">
+                      <input type="checkbox" checked={showAxisGrid} onChange={(e) => setShowAxisGrid(e.target.checked)}
+                        className="rounded w-3 h-3" />
+                      Aks Grid
+                    </label>
+                  </div>
                   <FloorPlanSVG
                     rooms={activePlan.rooms}
                     buildableWidth={buildableArea?.width || 14}
@@ -360,6 +459,7 @@ export function PlanStep() {
                     svgWidth={600}
                     svgHeight={480}
                     planName={activePlan.plan_name}
+                    showAxisGrid={showAxisGrid}
                   />
                 </div>
               </div>
@@ -434,6 +534,13 @@ export function PlanStep() {
             </div>
           )}
         </>
+      )}
+
+      {/* Radar chart: 9-dimensional comparison of all plans */}
+      {plans.length >= 2 && (
+        <div className="mt-6">
+          <PlanRadarChart plans={plans} />
+        </div>
       )}
 
       {/* Navigation */}
