@@ -57,12 +57,17 @@
 
 | # | Sorun | Şu anki durum | SaaS seviyesi |
 |---|-------|---------------|---------------|
-| F3.1 | VERİ AKIŞI KOPUK | `useDemoPlanRooms()` hardcoded demo data kullanıyor — plan adımından gelen veri hiç aktarılmıyor | projectStore'da `selectedPlanRooms` tutulacak. Plan adımında alternatif seçildiğinde store güncellenir. ThreeDStep bu store'dan okur |
-| F3.2 | PBR materyaller basit | Düz renk MeshStandardMaterial — texture yok, normal map yok | En azından: dış cephe için roughness variation, zemin döşeme için karo deseni (programmatic texture), pencere camı için envmap reflection, kolon beton texture |
-| F3.3 | Pencere/kapı detayı yetersiz | Kapı sadece kutu, pencere sadece düz cam | Kapı: pervaz + panel detayı (BoxGeometry kompozisyon), Pencere: çerçeve profili + cam (transmission material), Balkon: korkuluk (CylinderGeometry + BoxGeometry) |
-| F3.4 | Güneş gölge kalitesi | DirectionalLight shadow var ama shadowMap düşük çözünürlük, PCF filtering yok | Shadow-mapSize 4096, PCFSoftShadowMap, cascade shadow maps düşünülebilir |
-| F3.5 | Kat slider UX | Sol panelde buton listesi — scroll gerektiriyor | Dikey slider (range input) veya animasyonlu kat geçişi |
-| F3.6 | Render galerisi gerçek veri kullanmıyor | Render butonları var ama API key yoksa hiçbir şey gösteremiyor | API key yoksa placeholder render örnekleri göster + "API key ekleyerek gerçek render alın" mesajı. API key varsa oda bilgilerini plan adımından al |
+| F3.1 | VERİ AKIŞI KOPUK | `useDemoPlanRooms()` hardcoded — plan adımından veri aktarılmıyor | projectStore'da `selectedPlanRooms` → ThreeDStep gerçek veri okur. Plan değişince 3D anında güncellenir |
+| F3.2 | Bina geometrisi basit | Her oda düz kutu, duvar kalınlığı yok, pencere/kapı boşluğu yok | Gerçek duvar kalınlığı (0.25m dış, 0.10m iç), pencere/kapı yerinde duvar kesintisi, döşeme kenar profili, çatı geometrisi (beşik/teras), saçak, temel bandı, merdiven evi boşluğu |
+| F3.3 | PBR materyaller düz renk | MeshStandardMaterial sadece color — texture yok, normal map yok, envmap yok | Programmatic texture: sıva noise, seramik karo grid, ahşap grain, beton noise. MeshPhysicalMaterial: cam transmission+ior, envmap reflection. HDR sky dome |
+| F3.4 | Post-processing yok | Sadece DirectionalLight + ambient | SSAO (köşe gölgeleri), bloom (cam/metal parlaması), vignette, SMAA anti-aliasing, exposure kontrolü |
+| F3.5 | Kamera sabit | Sadece orbit — preset yok, animasyon yok | 6 kamera preset (kuş bakışı, 4 cephe, iç mekan), animasyonlu geçiş (spring/lerp), oda double-click fly-to |
+| F3.6 | İnteraktivite minimum | Hover tooltip var ama tıklama yok, ölçüm yok | Oda click → detay panel, double-click → fly-to, ölçüm modu (iki nokta mesafe), oda emissive highlight |
+| F3.7 | Çevre yok | Bina havada duruyor — zemin plane düz gri | Parsel sınırları yeşil alan, yol, ağaç placeholder (billboard/konik), araba, çim texture, kuzey oku 3D |
+| F3.8 | Görünüm modları az | X-ray, exploded, section cut (yatay) var — wireframe yok, thermal yok, dikey kesit yok | 6 mod: solid, x-ray, wireframe, section (yatay+dikey), exploded (spring animasyonlu), thermal (enerji U-değeri renklendirme) |
+| F3.9 | Export yok | Screenshot yok, GLTF yok | Canvas capture PNG (2×/4×), GLTFExporter ile .glb download, kamera preset'lerden otomatik 4 cephe screenshot |
+| F3.10 | Render galerisi statik | Oda listesi hardcoded, API key yoksa boş | Plan verisinden dinamik oda kartları, 4 stil karşılaştırma slider, dış cephe 4 yön render, placeholder görseller API key yokken |
+| F3.11 | Performans | Basit sahne ama optimizasyon yok | Geometry instancing (tekrar eden elemanlar), frustum culling, LOD (uzaktayken basit geometri), lazy load Three.js (code splitting) |
 
 ---
 
@@ -126,10 +131,105 @@
 6. **3 genuinely farklı strateji** — kompakt, güneş odaklı, mahremiyet
 7. **Mimari SVG iyileştirme** — çift çizgi duvar, aks grid, ölçü çizgileri
 
-### SEVİYE 3 — 3D Veri Akışı
-8. **Plan → 3D veri bağlantısı** — hardcoded demo kaldır, store'dan oku
-9. **PBR materyal iyileştirme** — en azından roughness variation + programmatic texture
-10. **Pencere/kapı/balkon detay** — geometri kompozisyon
+### SEVİYE 3 — 3D Mimari Görselleştirme (Enscape/Twinmotion seviyesi)
+
+**Hedef:** Üniversite jürisi ekranı gördüğünde "bu gerçek bir yazılım" desin. Profesyonel mimari görselleştirme kalitesi.
+
+#### 3A. Veri Akışı + Bina Geometri Motoru
+8. **Plan → 3D tam entegrasyon** — hardcoded demo kaldır. projectStore'daki selectedPlanRooms doğrudan BuildingViewer'a akar. Plan adımında alternatif değiştirince 3D anında güncellenir
+9. **Akıllı bina geometri üretici** (`threed_router.py` genişletme):
+   - Döşeme: her katta gerçek döşeme plağı (0.30m kalınlık, kenar profili)
+   - Duvarlar: dış duvar 0.25m, iç taşıyıcı 0.20m, bölme 0.10m — geometri olarak ayrı kalınlıkta
+   - Duvar boşlukları: pencere ve kapı yerlerinde duvar kesintisi (gerçek boşluk, düz kutu değil)
+   - Çatı: beşik çatı veya teras çatı seçeneği (kırma çatı geometrisi)
+   - Saçak: çatıdan 0.50m taşma
+   - Zemin kat girişi: giriş kapısı + saçak + basamak
+   - Merdiven evi: kat boşluğu olarak görünen alan (her katta)
+   - Temel: zemin altı 0.50m temel bandı (görünür)
+
+#### 3B. PBR Materyaller + Texture
+10. **Programmatic texture generation** (shader veya canvas-based):
+    - Dış cephe: sıva texture (noise-based roughness variation) + renk seçimi (beyaz, krem, gri, tuğla)
+    - İç duvar: beyaz boya (subtle roughness)
+    - Döşeme: seramik karo deseni (grid pattern, 0.60×0.60m)
+    - Balkon: taş/karo zemin
+    - Pencere camı: `MeshPhysicalMaterial` — transmission 0.6, ior 1.5, envmap reflection
+    - Kapı: ahşap doku (procedural wood grain)
+    - Kolon: beton texture (noise)
+    - Çatı: kiremit rengi
+11. **Environment map**: HDR sky dome (ücretsiz HDRI — sunny outdoor), gerçekçi gökyüzü yansıması cam ve parlak yüzeylerde
+
+#### 3C. Aydınlatma + Post-Processing
+12. **Gelişmiş aydınlatma**:
+    - Sun light: enlem + saat bazlı gerçek pozisyon (mevcut, iyileştirilecek)
+    - Ambient: hemisphere light (gökyüzü mavisi + zemin kahverengisi)
+    - Shadow: PCFSoftShadowMap, mapSize 4096×4096, cascade shadow düşünülebilir
+    - İç mekan modunda: oda bazlı point light (pencereden giren ışık simülasyonu)
+13. **Post-processing pipeline** (React Three Fiber `@react-three/postprocessing`):
+    - SSAO (Screen Space Ambient Occlusion) — köşelerde gerçekçi gölge
+    - Bloom — parlak yüzeylerde (cam, metal) ışık taşması
+    - Tone mapping — ACES filmic (mevcut) + exposure kontrolü
+    - Vignette — kenar kararması (subtle, profesyonel fotoğraf hissi)
+    - Anti-aliasing — SMAA veya FXAA
+
+#### 3D. İnteraktivite + UX
+14. **Kamera preset'leri** (tek tıkla geçiş, animasyonlu kamera hareketi):
+    - Kuş bakışı (top-down 45°)
+    - Güney cephe (street level)
+    - Kuzey cephe
+    - Doğu/Batı cephe
+    - İç mekan walkthrough (salon içinden bakış)
+    - İzometrik (45° her iki eksende)
+15. **Kat geçiş animasyonu**: kat seçildiğinde üstteki katlar yukarı kayarak açılır (spring animation, framer-motion veya R3F useSpring)
+16. **Oda interaktivitesi**:
+    - Hover: oda parlar (emissive) + tooltip (isim + alan + boyut)
+    - Click: sağ panelde oda detay kartı açılır (boyutlar, pencere yönü, bağlı odalar)
+    - Double-click: kamera o odaya fly-to + zoom
+17. **Ölçüm modu**: iki nokta arası mesafe ölçümü (tıkla-tıkla → dimension line)
+
+#### 3E. Çevre + Peyzaj (Bina etrafı)
+18. **Basit çevre elementleri**:
+    - Zemin döşeme: parsel sınırları (yeşil alan + yol kenarı gri)
+    - Ağaç placeholder'ları: billboard sprite veya basit konik geometri (3-5 adet)
+    - Yol: parsel önünde gri şerit
+    - Araba placeholder: basit kutu (otopark alanında)
+    - Çim: yeşil plane + noise texture (parsel bahçe alanları)
+19. **Kuzey oku**: 3D kuzey oku (compass) sahne köşesinde, her zaman görünür
+
+#### 3F. Export + Screenshot
+20. **Yüksek çözünürlük screenshot**: Canvas capture → PNG (2× veya 4× resolution multiplier). "Fotoğraf Çek" butonu → anında indirilebilir dosya
+21. **GLTF/GLB export**: Three.js scene'den GLTFExporter ile tüm bina modeli download (Blender/SketchUp'a aktarılabilir)
+22. **Turntable video**: 360° kamera dönüşü kaydı (opsiyonel, WebM/GIF)
+
+#### 3G. Görünüm Modları (Toggle panel)
+23. **6 görünüm modu** (sağ üst panel, icon toggle):
+    - **Solid**: varsayılan, tam PBR
+    - **X-Ray**: duvarlar %15 opacity, iç mekan görünür (mevcut, iyileştirilecek)
+    - **Wireframe**: tüm geometri wireframe (mühendislik görünümü)
+    - **Section cut**: yatay veya dikey kesit düzlemi, clipping plane ile (mevcut, iyileştirilecek — dikey kesit eklenecek)
+    - **Exploded**: katlar ayrışık (mevcut, spring animasyon eklenecek)
+    - **Thermal**: enerji performansına göre renklendirme (kırmızı=kayıp, yeşil=iyi — U değerlerine bağlı)
+24. **Kolon grid overlay**: toggle ile açılıp kapanır, aks isimleri (A, B, C / 1, 2, 3) 3D text olarak görünür
+
+#### 3H. Grok Imagine Render Galerisi (İyileştirilmiş)
+25. **Plan verisinden otomatik oda listesi**: render kartları hardcoded değil, seçili plandan dinamik
+26. **Dış cephe render**: 4 yönden (güney, doğu, batı, kuş bakışı) otomatik prompt
+27. **Render karşılaştırma**: 4 stili aynı oda için yan yana slider ile karşılaştır
+28. **API key yoksa**: her oda kartında profesyonel placeholder görsel + "Grok API key ile gerçek render alın" overlay
+29. **Render geçmişi**: üretilen render'lar session boyunca cache'lenir, tekrar üretmeye gerek yok
+
+#### KABUL KRİTERLERİ — SEVİYE 3
+- [ ] Plan adımında alternatif seçildiğinde 3D model 2 saniye içinde güncellenir
+- [ ] Orbit 60fps (mobil hariç)
+- [ ] En az 4 farklı PBR materyal (dış cephe, iç duvar, cam, ahşap) texture ile
+- [ ] SSAO + bloom post-processing aktif
+- [ ] 6 kamera preset'i, animasyonlu geçiş
+- [ ] Oda hover tooltip + click detay paneli
+- [ ] Screenshot PNG 2× çözünürlük çalışır
+- [ ] GLTF export çalışır (Blender'da açılabilir)
+- [ ] Çevre: zemin + en az 3 ağaç + yol
+- [ ] 6 görünüm modu toggle çalışır
+- [ ] Grok render kartları plan verisinden dinamik
 
 ### SEVİYE 4 — Fizibilite + PDF
 11. **PDF rapor** — 15+ sayfa, profesyonel, bankaya sunulabilir
@@ -150,10 +250,10 @@
 |--------|--------|--------|
 | 1 | Temel altyapı + store | 1 sohbet |
 | 2 | AI layout engine + SVG | 2 sohbet (engine + frontend) |
-| 3 | 3D veri akışı + materyal | 1 sohbet |
+| 3 | 3D mimari görselleştirme (geometri + materyal + post-processing + interaktivite + çevre + export) | 3-4 sohbet |
 | 4 | Fizibilite PDF + deprem/enerji | 1-2 sohbet |
 | 5 | Export + landing + polish | 1 sohbet |
-| **Toplam** | | **6-7 sohbet** |
+| **Toplam** | | **8-10 sohbet** |
 
 ---
 
