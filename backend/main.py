@@ -18,6 +18,8 @@ from routers.zoning_router import router as zoning_router
 from routers.plan_router import router as plan_router
 from routers.threed_router import router as threed_router
 from routers.feasibility_router import router as feasibility_router
+from routers.analysis_router import router as analysis_router
+from routers.export_router import router as export_router
 
 app = FastAPI(
     title="imarPRO API",
@@ -47,6 +49,8 @@ app.include_router(zoning_router)
 app.include_router(plan_router)
 app.include_router(threed_router)
 app.include_router(feasibility_router)
+app.include_router(analysis_router)
+app.include_router(export_router)
 
 
 @app.get("/")

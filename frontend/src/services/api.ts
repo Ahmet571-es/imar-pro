@@ -89,3 +89,31 @@ export async function calculateFeasibility(params: Record<string, unknown>) {
     body: JSON.stringify(params),
   })
 }
+
+// ── Earthquake API ──
+
+export async function analyzeEarthquake(params: Record<string, unknown>) {
+  return request('/api/earthquake/analyze', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+// ── Energy API ──
+
+export async function calculateEnergy(params: Record<string, unknown>) {
+  return request('/api/energy/calculate', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+// ── Export API ──
+
+export function getExportDXFUrl() {
+  return `${API_BASE}/api/export/dxf`
+}
+
+export function getExportSVGUrl() {
+  return `${API_BASE}/api/export/svg`
+}

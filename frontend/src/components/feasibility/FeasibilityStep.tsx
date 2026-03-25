@@ -2,6 +2,8 @@ import { useState, useCallback, useEffect } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
 import { calculateFeasibility } from '@/services/api'
 import { formatNumber, cn } from '@/lib/utils'
+import { EarthquakePanel } from './EarthquakePanel'
+import { EnergyPanel } from './EnergyPanel'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   AreaChart, Area, Cell, LineChart, Line, Legend, ReferenceLine,
@@ -340,6 +342,25 @@ export function FeasibilityStep() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Earthquake + Energy panels */}
+      {data && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+          <EarthquakePanel
+            katSayisi={imarParams.kat_adedi}
+            binaW={hesaplama.cekme_polygon_coords
+              ? Math.max(...hesaplama.cekme_polygon_coords.map(c => c.x)) - Math.min(...hesaplama.cekme_polygon_coords.map(c => c.x))
+              : parselData!.bounds.width - imarParams.on_bahce - imarParams.arka_bahce}
+            binaH={hesaplama.cekme_polygon_coords
+              ? Math.max(...hesaplama.cekme_polygon_coords.map(c => c.y)) - Math.min(...hesaplama.cekme_polygon_coords.map(c => c.y))
+              : parselData!.bounds.height - 2 * imarParams.yan_bahce}
+          />
+          <EnergyPanel
+            toplamAlan={hesaplama.toplam_insaat_alani}
+            katSayisi={imarParams.kat_adedi}
+          />
         </div>
       )}
 
