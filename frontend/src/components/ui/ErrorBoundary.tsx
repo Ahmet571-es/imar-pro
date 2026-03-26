@@ -100,8 +100,11 @@ export class ErrorBoundary extends Component<Props, State> {
               <div className="w-6 h-6 bg-primary-dark rounded-md flex items-center justify-center text-[9px] font-bold text-accent">
                 iP
               </div>
-              <span className="text-xs">imarPRO v1.0</span>
+              <span className="text-xs">imarPRO v3.0</span>
             </div>
+            <p className="text-[10px] text-text-light mt-2">
+              Sorun devam ediyorsa destek@imarpro.dev adresine hata detaylarını gönderin.
+            </p>
           </div>
         </div>
       )

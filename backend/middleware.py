@@ -285,3 +285,97 @@ def verify_supabase_token(authorization: str | None) -> dict | None:
         logger.debug(f"JWT doğrulama hatası: {e}")
         return None
 
+
+# ══════════════════════════════════════
+# 5. SECURITY HEADERS MIDDLEWARE
+# ══════════════════════════════════════
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Güvenlik header'ları — OWASP önerileri."""
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        response = await call_next(request)
+
+        # XSS koruması
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        # HSTS (sadece production'da)
+        if os.getenv("RAILWAY_ENVIRONMENT") == "production":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+        # Permissions Policy
+        response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+
+        return response
+
+
+# ══════════════════════════════════════
+# 6. USAGE TRACKING MIDDLEWARE
+# ══════════════════════════════════════
+
+# AI endpoint'leri — kullanım takibi yapılacak
+_TRACKED_ENDPOINTS = {
+    "/api/plan/generate": "plan_generate",
+    "/api/feasibility/ai-yorum": "ai_review",
+    "/api/render/generate": "render_room",
+    "/api/render/exterior": "render_exterior",
+    "/api/export/pdf": "pdf_export",
+    "/api/export/dxf": "dxf_export",
+    "/api/bim/export/ifc": "ifc_export",
+    "/api/imar/parse-pdf": "imar_pdf_parse",
+}
+
+
+class UsageTrackingMiddleware(BaseHTTPMiddleware):
+    """Kullanıcı bazlı kullanım takibi — Supabase'e yazar (varsa)."""
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # Sadece POST ve tracked endpoint'ler
+        if request.method != "POST" or request.url.path not in _TRACKED_ENDPOINTS:
+            return await call_next(request)
+
+        # Kullanıcı tespiti
+        user = verify_supabase_token(request.headers.get("Authorization"))
+        demo_id = request.headers.get("X-Demo-User-Id", "")
+
+        start = time.time()
+        response = await call_next(request)
+        duration_ms = int((time.time() - start) * 1000)
+
+        # Supabase'e log yaz (async, hata yutulur)
+        if user and response.status_code == 200:
+            _log_usage_async(
+                user_id=user["user_id"],
+                action=_TRACKED_ENDPOINTS[request.url.path],
+                duration_ms=duration_ms,
+            )
+
+        return response
+
+
+def _log_usage_async(user_id: str, action: str, duration_ms: int = 0):
+    """Supabase usage_log'a asenkron yaz (hata yutulur)."""
+    try:
+        supabase_url = os.getenv("SUPABASE_URL", "")
+        service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+        if not supabase_url or not service_key:
+            return
+
+        import requests as req
+        req.post(
+            f"{supabase_url}/rest/v1/usage_log",
+            json={"user_id": user_id, "action": action, "duration_ms": duration_ms},
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            timeout=2,
+        )
+    except Exception:
+        pass  # Kullanım logu yazılamazsa sessizce devam et
+

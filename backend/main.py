@@ -27,9 +27,12 @@ from routers.level6_router import router as level6_router
 from routers.admin_router import router as admin_router
 from routers.bim_router import router as bim_router
 from routers.saas_router import router as saas_router
-from middleware import RateLimitMiddleware, RequestLoggerMiddleware, setup_sentry
+from middleware import (
+    RateLimitMiddleware, RequestLoggerMiddleware, setup_sentry,
+    SecurityHeadersMiddleware, UsageTrackingMiddleware,
+)
 
-VERSION = "2.1.0"
+VERSION = "3.0.0"
 
 # Logging + Sentry (lifespan'dan önce)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -90,6 +93,12 @@ app.add_middleware(RateLimitMiddleware, requests_per_minute=_rpm, burst=50)
 
 # 3. Request Logger + Analytics
 app.add_middleware(RequestLoggerMiddleware)
+
+# 4. Security Headers (OWASP)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 5. Usage Tracking (Supabase — AI endpoint'ler)
+app.add_middleware(UsageTrackingMiddleware)
 
 
 # ── Routers ──

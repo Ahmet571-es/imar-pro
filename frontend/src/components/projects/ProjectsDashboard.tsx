@@ -6,6 +6,8 @@ import type { WizardStep } from '@/types'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { toast } from '@/stores/toastStore'
 import { ProjectComparison } from './ProjectComparison'
+import { NotificationBell } from '@/components/ui/NotificationBell'
+import { UsageIndicator } from '@/components/ui/UsageIndicator'
 import {
   Plus, FolderOpen, Trash2, Clock, MapPin, Loader2, Building2, LogOut, User,
   Settings, CheckCircle2, Layers, GitCompare, BarChart3,
@@ -144,6 +146,8 @@ export function ProjectsDashboard({ onOpenProject, onOpenAdmin }: Props) {
                 <BarChart3 className="w-4 h-4 text-white/70" />
               </button>
             )}
+            <NotificationBell demoUserId={user?.id} />
+            <UsageIndicator demoUserId={user?.id} />
             <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-1.5">
               <User className="w-4 h-4 text-white/60" />
               <span className="text-sm">{user?.name || user?.email}</span>
