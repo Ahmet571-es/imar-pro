@@ -320,3 +320,186 @@ def test_afad_api() -> dict:
         results["details"].append(f"Deprem API hata: {e}")
 
     return results
+
+
+# ══════════════════════════════════════
+# I1. TASARIM SPEKTRUMU GRAFİĞİ
+# ══════════════════════════════════════
+
+def tasarim_spektrumu(
+    ss: float = 0.411,
+    s1: float = 0.109,
+    zemin_sinifi: str = "ZC",
+) -> dict:
+    """TBDY 2018 yatay tasarım spektrumu çizer.
+
+    Returns:
+        T (periyot) ve Sa (spektral ivme) dizileri.
+    """
+    zemin_info = ZEMIN_SINIFLARI.get(zemin_sinifi, ZEMIN_SINIFLARI["ZC"])
+    fs = zemin_info["Fs"]
+
+    sds = ss * fs   # Kısa periyot tasarım ivmesi
+    sd1 = s1 * fs   # 1sn periyot tasarım ivmesi
+
+    # Karakteristik periyotlar
+    ta = 0.2 * sd1 / max(sds, 0.001)
+    tb = sd1 / max(sds, 0.001)
+
+    # Spektrum noktaları
+    noktalar = []
+    # T=0 → artan bölge
+    noktalar.append({"T": 0, "Sa": 0.4 * sds})
+    # T=Ta → plato başlangıç
+    noktalar.append({"T": round(ta, 3), "Sa": round(sds, 4)})
+    # T=Tb → plato bitiş
+    noktalar.append({"T": round(tb, 3), "Sa": round(sds, 4)})
+    # Azalan bölge
+    for t in [i * 0.1 for i in range(max(1, int(tb * 10) + 1), 41)]:
+        sa = sd1 / t if t > 0 else sds
+        noktalar.append({"T": round(t, 2), "Sa": round(sa, 4)})
+
+    return {
+        "sds": round(sds, 4),
+        "sd1": round(sd1, 4),
+        "ta": round(ta, 3),
+        "tb": round(tb, 3),
+        "zemin_sinifi": zemin_sinifi,
+        "fs": fs,
+        "noktalar": noktalar,
+        "aciklama": f"TBDY 2018 Yatay Tasarım Spektrumu — {zemin_sinifi} zemini",
+    }
+
+
+# ══════════════════════════════════════
+# I2. BİNA PERİYOT HESABI
+# ══════════════════════════════════════
+
+def bina_periyod_hesabi(
+    kat_sayisi: int = 4,
+    kat_yuksekligi: float = 3.0,
+    tasiyici_sistem: str = "cerceve",  # cerceve | perde | tunel_kalip | celik
+) -> dict:
+    """TBDY 2018 — T = Ct × H^α ile bina doğal periyodu."""
+    H = kat_sayisi * kat_yuksekligi  # Bina yüksekliği (m)
+
+    # Ct ve α katsayıları (TBDY 2018 Tablo 4.4)
+    SISTEM_KATSAYILARI = {
+        "cerceve": {"Ct": 0.1, "alpha": 0.75, "aciklama": "Betonarme Çerçeve"},
+        "perde": {"Ct": 0.05, "alpha": 0.75, "aciklama": "Betonarme Perde/Çerçeve"},
+        "tunel_kalip": {"Ct": 0.05, "alpha": 0.75, "aciklama": "Tünel Kalıp"},
+        "celik": {"Ct": 0.08, "alpha": 0.75, "aciklama": "Çelik Çerçeve"},
+    }
+
+    k = SISTEM_KATSAYILARI.get(tasiyici_sistem, SISTEM_KATSAYILARI["cerceve"])
+    Ct = k["Ct"]
+    alpha = k["alpha"]
+
+    T = Ct * (H ** alpha)
+
+    # Rayleigh yöntemi ile üst sınır (kaba)
+    T_ust = 1.4 * T
+
+    return {
+        "bina_yuksekligi_m": round(H, 1),
+        "tasiyici_sistem": k["aciklama"],
+        "Ct": Ct,
+        "alpha": alpha,
+        "T_hesap": round(T, 3),
+        "T_ust_sinir": round(T_ust, 3),
+        "periyot_aralik": f"{T:.3f} — {T_ust:.3f} sn",
+        "aciklama": f"T = {Ct} × {H:.1f}^{alpha} = {T:.3f} sn",
+    }
+
+
+# ══════════════════════════════════════
+# I3. KAT BAZLI DEPREM KUVVETİ DAĞILIMI
+# ══════════════════════════════════════
+
+def deprem_kuvvet_dagilimi(
+    kat_sayisi: int = 4,
+    kat_yuksekligi: float = 3.0,
+    bina_agirligi_ton: float = 0,
+    kat_alan: float = 140.0,
+    ss: float = 0.411,
+    s1: float = 0.109,
+    zemin_sinifi: str = "ZC",
+    R: float = 8.0,  # Taşıyıcı sistem davranış katsayısı
+    D: float = 3.0,  # Dayanım fazlalığı katsayısı
+) -> dict:
+    """Eşdeğer deprem yükü yöntemi — kat bazlı yatay kuvvetler.
+
+    TBDY 2018 Bölüm 4 — Eşdeğer Deprem Yükü Yöntemi.
+    """
+    import math
+
+    zemin_info = ZEMIN_SINIFLARI.get(zemin_sinifi, ZEMIN_SINIFLARI["ZC"])
+    fs = zemin_info["Fs"]
+    sds = ss * fs
+    sd1 = s1 * fs
+
+    H = kat_sayisi * kat_yuksekligi
+
+    # Bina ağırlığı (ton) — yoksa tahmini
+    if bina_agirligi_ton <= 0:
+        # Ortalama 1.0 t/m² (betonarme konut)
+        bina_agirligi_ton = kat_sayisi * kat_alan * 1.0
+
+    W = bina_agirligi_ton * 9.81  # kN
+
+    # Bina periyodu
+    T = 0.1 * (H ** 0.75)  # Çerçeve
+
+    # Spektral ivme
+    ta = 0.2 * sd1 / max(sds, 0.001)
+    tb = sd1 / max(sds, 0.001)
+
+    if T <= ta:
+        Sa = 0.4 * sds + 0.6 * sds * T / max(ta, 0.001)
+    elif T <= tb:
+        Sa = sds
+    else:
+        Sa = sd1 / T
+
+    # Taban kesme kuvveti
+    Vt = W * Sa / (R / D)
+
+    # Kat kuvvet dağılımı (üçgensel)
+    katlar = []
+    toplam_wi_hi = 0
+    for i in range(1, kat_sayisi + 1):
+        wi = bina_agirligi_ton / kat_sayisi * 9.81  # kN
+        hi = i * kat_yuksekligi
+        toplam_wi_hi += wi * hi
+
+    for i in range(1, kat_sayisi + 1):
+        wi = bina_agirligi_ton / kat_sayisi * 9.81
+        hi = i * kat_yuksekligi
+        fi = Vt * (wi * hi) / max(toplam_wi_hi, 1)
+        vi = sum(
+            Vt * (bina_agirligi_ton / kat_sayisi * 9.81 * j * kat_yuksekligi) / max(toplam_wi_hi, 1)
+            for j in range(i, kat_sayisi + 1)
+        )
+
+        katlar.append({
+            "kat": i,
+            "yukseklik_m": round(hi, 1),
+            "agirlik_kn": round(wi, 1),
+            "deprem_kuvveti_kn": round(fi, 1),
+            "kat_kesme_kn": round(vi, 1),
+            "kat_devrilme_kn_m": round(fi * hi, 1),
+        })
+
+    return {
+        "bina_agirligi_ton": round(bina_agirligi_ton, 1),
+        "bina_agirligi_kn": round(W, 1),
+        "bina_periyodu_sn": round(T, 3),
+        "spektral_ivme_g": round(Sa, 4),
+        "taban_kesme_kn": round(Vt, 1),
+        "taban_kesme_orani": round(Vt / max(W, 1) * 100, 2),
+        "R": R,
+        "D": D,
+        "katlar": katlar,
+        "aciklama": "TBDY 2018 Eşdeğer Deprem Yükü Yöntemi",
+    }
+

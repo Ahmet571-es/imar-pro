@@ -261,3 +261,199 @@ def _generate_energy_recommendations(sonuc, duvar_yal, pencere,
     recs.append(f"Tahmini yillik enerji maliyeti: "
                 f"{sonuc.yillik_enerji_maliyeti:,.0f} TL")
     return recs
+
+
+# ══════════════════════════════════════
+# I4. AYLIK ENERJİ TÜKETİM GRAFİĞİ
+# ══════════════════════════════════════
+
+def aylik_enerji_tuketim(
+    toplam_alan: float,
+    kat_sayisi: int = 4,
+    latitude: float = 39.93,
+    duvar_yalitim: str = "duvar_5cm_eps",
+    pencere_tipi: str = "isicam",
+) -> dict:
+    """12 aylık ısıtma/soğutma/aydınlatma enerji tüketim grafiği."""
+    import math
+
+    # Aylık HDD/CDD profilleri (Ankara benzeri — enlem bazlı ölçeklenir)
+    # Ocak=0 ... Aralık=11
+    HDD_PROFIL = [620, 500, 380, 180, 40, 0, 0, 0, 10, 160, 380, 560]
+    CDD_PROFIL = [0, 0, 0, 0, 20, 80, 160, 150, 60, 5, 0, 0]
+
+    # Enlem bazlı ölçekleme
+    lat_fac = 1.0 + (latitude - 39.0) * 0.04  # Kuzey → daha soğuk
+    soguk_fac = max(0.3, 1.2 - (latitude - 35) * 0.05)  # Güney → daha sıcak
+
+    duvar_u = YALITIM_U_DEGERLERI.get(duvar_yalitim, 0.50)
+    pencere_u = PENCERE_U_DEGERLERI.get(pencere_tipi, 2.60)
+
+    # Bina kabuğu ısı kaybı katsayısı (W/K)
+    cevre = 4 * (toplam_alan / kat_sayisi) ** 0.5
+    duvar_a = cevre * 2.6 * kat_sayisi * 0.75  # Opak kısım
+    pencere_a = cevre * 2.6 * kat_sayisi * 0.25
+    cati_a = toplam_alan / kat_sayisi
+    q_total = duvar_a * duvar_u + pencere_a * pencere_u + cati_a * 0.30
+
+    AY_ISIMLERI = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+                   "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
+
+    # Aydınlatma — gün uzunluğuna göre (kısa gün → daha fazla)
+    AYDINLATMA_PROFIL = [1.3, 1.2, 1.0, 0.9, 0.8, 0.7, 0.7, 0.8, 0.9, 1.0, 1.2, 1.3]
+    aydinlatma_baz = toplam_alan * 10 / 1000  # 10 W/m² × saatler → kWh
+
+    aylar = []
+    yillik_isitma = 0
+    yillik_sogutma = 0
+    yillik_aydinlatma = 0
+
+    for i in range(12):
+        hdd = HDD_PROFIL[i] * lat_fac
+        cdd = CDD_PROFIL[i] * soguk_fac
+
+        isitma = max(0, q_total * hdd * 24 / 1000 / 0.92 / toplam_alan)  # kWh/m²
+        sogutma = max(0, q_total * cdd * 24 / 1000 / 3.5 / toplam_alan * soguk_fac)
+        aydinlatma = aydinlatma_baz * AYDINLATMA_PROFIL[i] * 30 / toplam_alan
+
+        yillik_isitma += isitma * toplam_alan
+        yillik_sogutma += sogutma * toplam_alan
+        yillik_aydinlatma += aydinlatma * toplam_alan
+
+        aylar.append({
+            "ay": AY_ISIMLERI[i],
+            "ay_no": i + 1,
+            "isitma_kwh_m2": round(isitma, 1),
+            "sogutma_kwh_m2": round(sogutma, 1),
+            "aydinlatma_kwh_m2": round(aydinlatma, 1),
+            "toplam_kwh_m2": round(isitma + sogutma + aydinlatma, 1),
+        })
+
+    return {
+        "aylar": aylar,
+        "yillik_ozet": {
+            "isitma_kwh": round(yillik_isitma),
+            "sogutma_kwh": round(yillik_sogutma),
+            "aydinlatma_kwh": round(yillik_aydinlatma),
+            "toplam_kwh": round(yillik_isitma + yillik_sogutma + yillik_aydinlatma),
+        },
+    }
+
+
+# ══════════════════════════════════════
+# I5. GÜNEŞ PANELİ ROI
+# ══════════════════════════════════════
+
+def gunes_paneli_roi(
+    cati_alani: float = 140.0,
+    panel_verimi: float = 0.20,       # %20
+    kullanilabilir_oran: float = 0.60, # Çatının %60'ı
+    yillik_gunes_saat: float = 1700,   # saat (Ankara)
+    panel_birim_fiyat: float = 5500,   # TL/m²
+    elektrik_fiyat: float = 4.50,      # TL/kWh
+    yillik_fiyat_artisi: float = 0.30, # Elektrik fiyat artışı
+    panel_omru_yil: int = 25,
+    degradasyon: float = 0.007,        # Yıllık %0.7 verim kaybı
+) -> dict:
+    """Çatı güneş paneli yatırım geri dönüş analizi."""
+    panel_alani = cati_alani * kullanilabilir_oran
+    panel_guc_kw = panel_alani * panel_verimi  # kWp
+
+    yatirim = panel_alani * panel_birim_fiyat
+    yillik_uretim_baz = panel_guc_kw * yillik_gunes_saat  # kWh/yıl
+
+    projeksiyon = []
+    kumulatif_tasarruf = 0
+    geri_odeme_yili = None
+
+    for yil in range(1, panel_omru_yil + 1):
+        verim_kaybi = (1 - degradasyon) ** (yil - 1)
+        uretim = yillik_uretim_baz * verim_kaybi
+        fiyat = elektrik_fiyat * (1 + yillik_fiyat_artisi) ** (yil - 1)
+        tasarruf = uretim * fiyat
+        kumulatif_tasarruf += tasarruf
+
+        if geri_odeme_yili is None and kumulatif_tasarruf >= yatirim:
+            geri_odeme_yili = yil
+
+        projeksiyon.append({
+            "yil": yil,
+            "uretim_kwh": round(uretim),
+            "elektrik_fiyat": round(fiyat, 2),
+            "tasarruf_tl": round(tasarruf),
+            "kumulatif_tasarruf": round(kumulatif_tasarruf),
+            "net_kazanc": round(kumulatif_tasarruf - yatirim),
+        })
+
+    toplam_uretim = sum(p["uretim_kwh"] for p in projeksiyon)
+    toplam_tasarruf = projeksiyon[-1]["kumulatif_tasarruf"] if projeksiyon else 0
+
+    return {
+        "panel_alani_m2": round(panel_alani, 1),
+        "panel_guc_kwp": round(panel_guc_kw, 1),
+        "yatirim_tl": round(yatirim),
+        "yillik_uretim_kwh": round(yillik_uretim_baz),
+        "geri_odeme_yili": geri_odeme_yili,
+        "toplam_uretim_kwh": round(toplam_uretim),
+        "toplam_tasarruf_tl": round(toplam_tasarruf),
+        "net_kazanc_tl": round(toplam_tasarruf - yatirim),
+        "roi_pct": round((toplam_tasarruf - yatirim) / max(yatirim, 1) * 100, 1),
+        "projeksiyon": projeksiyon[:10],  # İlk 10 yıl
+        "co2_azaltma_ton": round(toplam_uretim * 0.0005, 1),  # ~0.5 kg CO₂/kWh
+    }
+
+
+# ══════════════════════════════════════
+# I6. ISI KAYBI HARİTASI
+# ══════════════════════════════════════
+
+def isi_kaybi_haritasi(
+    toplam_alan: float = 560.0,
+    kat_sayisi: int = 4,
+    duvar_yalitim: str = "duvar_5cm_eps",
+    pencere_tipi: str = "isicam",
+    cati_yalitimli: bool = True,
+    pencere_duvar_orani: float = 0.25,
+) -> dict:
+    """Duvar/cam/çatı/döşeme bazlı ısı kaybı dağılım haritası."""
+    duvar_u = YALITIM_U_DEGERLERI.get(duvar_yalitim, 0.50)
+    pencere_u = PENCERE_U_DEGERLERI.get(pencere_tipi, 2.60)
+    cati_u = YALITIM_U_DEGERLERI["cati_yalitimli" if cati_yalitimli else "cati_yalitimsiz"]
+    doseme_u = 0.40  # Bodrum üzeri döşeme
+
+    cevre = 4 * (toplam_alan / kat_sayisi) ** 0.5
+    duvar_alani = cevre * 2.6 * kat_sayisi
+    pencere_alani = duvar_alani * pencere_duvar_orani
+    opak_alani = duvar_alani - pencere_alani
+    cati_alani = toplam_alan / kat_sayisi
+    doseme_alani = toplam_alan / kat_sayisi
+
+    # Isı kaybı (W/K)
+    kayiplar = {
+        "duvar": {"alan_m2": round(opak_alani, 1), "u_degeri": duvar_u, "kayip_wk": round(opak_alani * duvar_u, 1)},
+        "pencere": {"alan_m2": round(pencere_alani, 1), "u_degeri": pencere_u, "kayip_wk": round(pencere_alani * pencere_u, 1)},
+        "cati": {"alan_m2": round(cati_alani, 1), "u_degeri": cati_u, "kayip_wk": round(cati_alani * cati_u, 1)},
+        "doseme": {"alan_m2": round(doseme_alani, 1), "u_degeri": doseme_u, "kayip_wk": round(doseme_alani * doseme_u, 1)},
+    }
+
+    toplam_kayip = sum(k["kayip_wk"] for k in kayiplar.values())
+
+    for k, v in kayiplar.items():
+        v["oran_pct"] = round(v["kayip_wk"] / max(toplam_kayip, 1) * 100, 1)
+
+    # En büyük kaynak ve öneri
+    en_buyuk = max(kayiplar, key=lambda k: kayiplar[k]["kayip_wk"])
+    oneriler = []
+    if kayiplar["pencere"]["oran_pct"] > 30:
+        oneriler.append("Pencerelerden yüksek ısı kaybı — Low-E cam önerilir")
+    if kayiplar["cati"]["oran_pct"] > 25 and not cati_yalitimli:
+        oneriler.append("Çatı yalıtımı eklemek ısı kaybını %20-30 azaltır")
+    if kayiplar["duvar"]["oran_pct"] > 40:
+        oneriler.append("Duvar yalıtımını artırmak (8-10cm EPS) önerilir")
+
+    return {
+        "kayiplar": kayiplar,
+        "toplam_kayip_wk": round(toplam_kayip, 1),
+        "en_buyuk_kaynak": en_buyuk,
+        "oneriler": oneriler,
+    }

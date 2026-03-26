@@ -584,3 +584,180 @@ class TestBIM:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
+
+
+# ══════════════════════════════════════
+# 15. FİZİBİLİTE DERİNLEŞTİRME (G)
+# ══════════════════════════════════════
+
+class TestFeasibilityDeep:
+    def test_senaryo(self, client):
+        r = client.post("/api/feasibility/senaryo", json={
+            "baz_maliyet": 42000000, "baz_gelir": 56000000,
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["senaryolar"]) == 3
+        assert data["senaryolar"][0]["senaryo"] == "İyimser"
+        assert data["senaryolar"][1]["senaryo"] == "Baz"
+        assert data["senaryolar"][2]["senaryo"] == "Kötümser"
+        assert data["senaryolar"][0]["kar"] > data["senaryolar"][2]["kar"]
+
+    def test_kredi(self, client):
+        r = client.post("/api/feasibility/kredi", json={
+            "kredi_tutari": 20000000, "yillik_faiz": 0.42, "vade_ay": 120,
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["aylik_taksit"] > 0
+        assert data["toplam_faiz"] > data["kredi_tutari"]  # Yüksek faizle faiz > anapara
+        assert len(data["taksitler"]) > 0
+
+    def test_enflasyon(self, client):
+        r = client.post("/api/feasibility/enflasyon", json={
+            "baz_maliyet": 42000000, "baz_gelir": 56000000,
+            "maliyet_enflasyon": 0.45, "gelir_enflasyon": 0.35,
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["projeksiyon"]) >= 5
+        assert data["projeksiyon"][0]["yil"] == 0
+        assert data["insaat_sonu"]["maliyet_artisi"] > 0
+
+    def test_kira(self, client):
+        r = client.post("/api/feasibility/kira", json={
+            "toplam_maliyet": 42000000, "daire_sayisi": 8,
+            "ortalama_kira_tl": 15000,
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["brut_verim_pct"] > 0
+        assert data["net_verim_pct"] > 0
+        assert len(data["projeksiyon"]) == 10
+
+    def test_senaryo_logic(self):
+        """Senaryo karşılaştırma iç mantık."""
+        from analysis.feasibility import senaryo_karsilastirma
+        result = senaryo_karsilastirma(10000000, 15000000)
+        assert result["senaryolar"][0]["kar"] > result["senaryolar"][2]["kar"]
+
+    def test_kredi_esit_anapara(self):
+        """Eşit anapara ödemeli kredi."""
+        from analysis.feasibility import kredi_odeme_plani
+        result = kredi_odeme_plani(10000000, yillik_faiz=0.30, vade_ay=60, odeme_tipi="esit_anapara")
+        assert result["taksitler"][0]["taksit"] > result["taksitler"][-1]["taksit"]
+
+    def test_kira_geri_odeme(self):
+        """Kira getirisi geri ödeme süresi."""
+        from analysis.feasibility import kira_getirisi_analizi
+        result = kira_getirisi_analizi(
+            toplam_maliyet=5000000, daire_sayisi=4,
+            ortalama_kira_tl=8000, projeksiyon_yil=20,
+        )
+        assert result["geri_odeme_yili"] is not None or result["projeksiyon"][-1]["geri_odeme_pct"] > 0
+
+
+# ══════════════════════════════════════
+# 16. DEPREM DERİNLEŞTİRME (I)
+# ══════════════════════════════════════
+
+class TestEarthquakeDeep:
+    def test_spektrum(self, client):
+        r = client.post("/api/earthquake/spektrum", json={
+            "ss": 0.411, "s1": 0.109, "zemin_sinifi": "ZC",
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["sds"] > 0
+        assert data["sd1"] > 0
+        assert len(data["noktalar"]) > 5
+        assert data["ta"] < data["tb"]
+
+    def test_periyod(self, client):
+        r = client.post("/api/earthquake/periyod", json={
+            "kat_sayisi": 5, "kat_yuksekligi": 3.0, "tasiyici_sistem": "cerceve",
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["T_hesap"] > 0
+        assert data["T_ust_sinir"] > data["T_hesap"]
+
+    def test_kuvvet(self, client):
+        r = client.post("/api/earthquake/kuvvet", json={
+            "kat_sayisi": 4, "kat_alan": 140,
+            "ss": 0.411, "s1": 0.109,
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["taban_kesme_kn"] > 0
+        assert len(data["katlar"]) == 4
+        # Üst katlarda daha büyük kuvvet (üçgen dağılım)
+        assert data["katlar"][-1]["deprem_kuvveti_kn"] > data["katlar"][0]["deprem_kuvveti_kn"]
+
+    def test_spektrum_unit(self):
+        """Tasarım spektrumu birim testi."""
+        from analysis.earthquake_risk import tasarim_spektrumu
+        result = tasarim_spektrumu(ss=0.6, s1=0.2, zemin_sinifi="ZD")
+        assert result["fs"] == 1.2
+        assert result["sds"] > 0.6  # ZD amplifikasyonu
+
+    def test_periyod_unit(self):
+        """Periyod hesabı birim testi."""
+        from analysis.earthquake_risk import bina_periyod_hesabi
+        r1 = bina_periyod_hesabi(kat_sayisi=4, tasiyici_sistem="cerceve")
+        r2 = bina_periyod_hesabi(kat_sayisi=4, tasiyici_sistem="perde")
+        assert r1["T_hesap"] > r2["T_hesap"]  # Çerçeve daha uzun periyot
+
+
+# ══════════════════════════════════════
+# 17. ENERJİ DERİNLEŞTİRME (I)
+# ══════════════════════════════════════
+
+class TestEnergyDeep:
+    def test_aylik(self, client):
+        r = client.post("/api/energy/aylik", json={
+            "toplam_alan": 560, "kat_sayisi": 4,
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["aylar"]) == 12
+        # Kış ayları daha fazla ısıtma
+        assert data["aylar"][0]["isitma_kwh_m2"] > data["aylar"][6]["isitma_kwh_m2"]
+        # Yaz ayları daha fazla soğutma
+        assert data["aylar"][6]["sogutma_kwh_m2"] > data["aylar"][0]["sogutma_kwh_m2"]
+
+    def test_solar(self, client):
+        r = client.post("/api/energy/solar", json={
+            "cati_alani": 140, "panel_verimi": 0.20,
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["panel_guc_kwp"] > 0
+        assert data["yillik_uretim_kwh"] > 0
+        assert data["roi_pct"] > 0
+        assert len(data["projeksiyon"]) == 10
+
+    def test_heat_loss(self, client):
+        r = client.post("/api/energy/heat-loss", json={
+            "toplam_alan": 560, "kat_sayisi": 4,
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert "duvar" in data["kayiplar"]
+        assert "pencere" in data["kayiplar"]
+        assert "cati" in data["kayiplar"]
+        total_pct = sum(k["oran_pct"] for k in data["kayiplar"].values())
+        assert 99 < total_pct < 101  # Toplamda ~%100
+
+    def test_aylik_unit(self):
+        """Aylık enerji birim testi."""
+        from analysis.energy_performance import aylik_enerji_tuketim
+        result = aylik_enerji_tuketim(560, kat_sayisi=4)
+        assert result["yillik_ozet"]["toplam_kwh"] > 0
+
+    def test_solar_roi_unit(self):
+        """Güneş paneli ROI birim testi."""
+        from analysis.energy_performance import gunes_paneli_roi
+        result = gunes_paneli_roi(cati_alani=100)
+        assert result["net_kazanc_tl"] > 0
+        assert result["co2_azaltma_ton"] > 0

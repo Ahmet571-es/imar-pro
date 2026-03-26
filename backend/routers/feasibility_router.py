@@ -12,6 +12,8 @@ from analysis.revenue_estimator import hesapla_gelir
 from analysis.feasibility import (
     hesapla_fizibilite, duyarlilik_5x5, monte_carlo,
     nakit_akisi, hesapla_irr, tornado_analizi,
+    senaryo_karsilastirma, kredi_odeme_plani,
+    enflasyon_modeli, kira_getirisi_analizi,
 )
 from config.cost_defaults import get_iller
 
@@ -242,3 +244,119 @@ def _fallback_yorum(req) -> str:
         f"Yatırımın geri dönüş süresi {req.payback_ay} ay olarak hesaplanmıştır. "
         f"Detaylı analiz için bir gayrimenkul değerleme uzmanı ile görüşmeniz önerilir."
     )
+
+
+# ══════════════════════════════════════
+# G1. 3 SENARYO KARŞILAŞTIRMA
+# ══════════════════════════════════════
+
+class SenaryoRequest(BaseModel):
+    baz_maliyet: float = Field(..., gt=0)
+    baz_gelir: float = Field(..., gt=0)
+    iyimser_maliyet_d: float = Field(default=-0.10)
+    iyimser_gelir_d: float = Field(default=0.15)
+    kotumser_maliyet_d: float = Field(default=0.15)
+    kotumser_gelir_d: float = Field(default=-0.10)
+    satilabilir_alan: float = Field(default=0, ge=0)
+
+
+@router.post("/senaryo")
+async def compare_scenarios(req: SenaryoRequest):
+    """İyimser / Baz / Kötümser 3 senaryo karşılaştırması."""
+    try:
+        return senaryo_karsilastirma(
+            baz_maliyet=req.baz_maliyet,
+            baz_gelir=req.baz_gelir,
+            iyimser_maliyet_d=req.iyimser_maliyet_d,
+            iyimser_gelir_d=req.iyimser_gelir_d,
+            kotumser_maliyet_d=req.kotumser_maliyet_d,
+            kotumser_gelir_d=req.kotumser_gelir_d,
+            satilabilir_alan=req.satilabilir_alan,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════
+# G2. KREDİ GERİ ÖDEME PLANI
+# ══════════════════════════════════════
+
+class KrediRequest(BaseModel):
+    kredi_tutari: float = Field(..., gt=0)
+    yillik_faiz: float = Field(default=0.42, gt=0, le=2.0)
+    vade_ay: int = Field(default=120, ge=12, le=360)
+    odeme_tipi: str = Field(default="esit_taksit")
+
+
+@router.post("/kredi")
+async def calculate_loan(req: KrediRequest):
+    """Kredi geri ödeme planı — eşit taksit veya eşit anapara."""
+    try:
+        return kredi_odeme_plani(
+            kredi_tutari=req.kredi_tutari,
+            yillik_faiz=req.yillik_faiz,
+            vade_ay=req.vade_ay,
+            odeme_tipi=req.odeme_tipi,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════
+# G3. ENFLASYON MODELİ
+# ══════════════════════════════════════
+
+class EnflasyonRequest(BaseModel):
+    baz_maliyet: float = Field(..., gt=0)
+    baz_gelir: float = Field(..., gt=0)
+    insaat_suresi_yil: float = Field(default=1.5, gt=0)
+    maliyet_enflasyon: float = Field(default=0.45, ge=0, le=3.0)
+    gelir_enflasyon: float = Field(default=0.35, ge=0, le=3.0)
+    projeksiyon_yil: int = Field(default=5, ge=1, le=20)
+
+
+@router.post("/enflasyon")
+async def calculate_inflation(req: EnflasyonRequest):
+    """Enflasyon modellemesi — maliyet ve gelire yıllık enflasyon uygulama."""
+    try:
+        return enflasyon_modeli(
+            baz_maliyet=req.baz_maliyet,
+            baz_gelir=req.baz_gelir,
+            insaat_suresi_yil=req.insaat_suresi_yil,
+            maliyet_enflasyon=req.maliyet_enflasyon,
+            gelir_enflasyon=req.gelir_enflasyon,
+            projeksiyon_yil=req.projeksiyon_yil,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════
+# G4. KİRA GETİRİSİ ANALİZİ
+# ══════════════════════════════════════
+
+class KiraRequest(BaseModel):
+    toplam_maliyet: float = Field(..., gt=0)
+    daire_sayisi: int = Field(default=8, ge=1)
+    ortalama_kira_tl: float = Field(default=15000, gt=0)
+    doluluk_orani: float = Field(default=0.92, ge=0, le=1)
+    yillik_gider_orani: float = Field(default=0.15, ge=0, le=0.5)
+    yillik_kira_artisi: float = Field(default=0.35, ge=0, le=2.0)
+    projeksiyon_yil: int = Field(default=10, ge=1, le=30)
+
+
+@router.post("/kira")
+async def calculate_rent_yield(req: KiraRequest):
+    """Kira getirisi analizi — brüt/net verim, geri ödeme süresi."""
+    try:
+        return kira_getirisi_analizi(
+            toplam_maliyet=req.toplam_maliyet,
+            daire_sayisi=req.daire_sayisi,
+            ortalama_kira_tl=req.ortalama_kira_tl,
+            doluluk_orani=req.doluluk_orani,
+            yillik_gider_orani=req.yillik_gider_orani,
+            yillik_kira_artisi=req.yillik_kira_artisi,
+            projeksiyon_yil=req.projeksiyon_yil,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

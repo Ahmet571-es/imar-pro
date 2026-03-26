@@ -8,8 +8,14 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from analysis.earthquake_risk import deprem_risk_analizi, ZEMIN_SINIFLARI
-from analysis.energy_performance import enerji_performans_hesapla, ENERJI_SINIFLARI, YALITIM_U_DEGERLERI, PENCERE_U_DEGERLERI
+from analysis.earthquake_risk import (
+    deprem_risk_analizi, ZEMIN_SINIFLARI,
+    tasarim_spektrumu, bina_periyod_hesabi, deprem_kuvvet_dagilimi,
+)
+from analysis.energy_performance import (
+    enerji_performans_hesapla, ENERJI_SINIFLARI, YALITIM_U_DEGERLERI, PENCERE_U_DEGERLERI,
+    aylik_enerji_tuketim, gunes_paneli_roi, isi_kaybi_haritasi,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -261,3 +267,161 @@ async def get_energy_options():
         "pencere_tipleri": PENCERE_U_DEGERLERI,
         "isitma_sistemleri": ["dogalgaz_kombi", "merkezi", "isi_pompasi"],
     }
+
+
+# ══════════════════════════════════════
+# I1. TASARIM SPEKTRUMU
+# ══════════════════════════════════════
+
+class SpektrumRequest(BaseModel):
+    ss: float = Field(default=0.411, gt=0)
+    s1: float = Field(default=0.109, gt=0)
+    zemin_sinifi: str = Field(default="ZC")
+
+
+@router.post("/api/earthquake/spektrum")
+async def get_spektrum(req: SpektrumRequest):
+    """TBDY 2018 yatay tasarım spektrumu grafiği."""
+    try:
+        return tasarim_spektrumu(ss=req.ss, s1=req.s1, zemin_sinifi=req.zemin_sinifi)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════
+# I2. BİNA PERİYOT HESABI
+# ══════════════════════════════════════
+
+class PeriyodRequest(BaseModel):
+    kat_sayisi: int = Field(default=4, ge=1)
+    kat_yuksekligi: float = Field(default=3.0, ge=2.5)
+    tasiyici_sistem: str = Field(default="cerceve")
+
+
+@router.post("/api/earthquake/periyod")
+async def calculate_period(req: PeriyodRequest):
+    """Bina doğal periyot hesabı — TBDY 2018."""
+    try:
+        return bina_periyod_hesabi(
+            kat_sayisi=req.kat_sayisi,
+            kat_yuksekligi=req.kat_yuksekligi,
+            tasiyici_sistem=req.tasiyici_sistem,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════
+# I3. KAT BAZLI DEPREM KUVVETİ
+# ══════════════════════════════════════
+
+class KuvvetRequest(BaseModel):
+    kat_sayisi: int = Field(default=4, ge=1)
+    kat_yuksekligi: float = Field(default=3.0, ge=2.5)
+    kat_alan: float = Field(default=140.0, gt=0)
+    ss: float = Field(default=0.411, gt=0)
+    s1: float = Field(default=0.109, gt=0)
+    zemin_sinifi: str = Field(default="ZC")
+    R: float = Field(default=8.0, gt=0)
+    D: float = Field(default=3.0, gt=0)
+
+
+@router.post("/api/earthquake/kuvvet")
+async def calculate_seismic_force(req: KuvvetRequest):
+    """Eşdeğer deprem yükü — kat bazlı kuvvet dağılımı."""
+    try:
+        return deprem_kuvvet_dagilimi(
+            kat_sayisi=req.kat_sayisi,
+            kat_yuksekligi=req.kat_yuksekligi,
+            kat_alan=req.kat_alan,
+            ss=req.ss, s1=req.s1,
+            zemin_sinifi=req.zemin_sinifi,
+            R=req.R, D=req.D,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════
+# I4. AYLIK ENERJİ TÜKETİM
+# ══════════════════════════════════════
+
+class AylikEnerjiRequest(BaseModel):
+    toplam_alan: float = Field(..., gt=0)
+    kat_sayisi: int = Field(default=4, ge=1)
+    latitude: float = Field(default=39.93)
+    duvar_yalitim: str = Field(default="duvar_5cm_eps")
+    pencere_tipi: str = Field(default="isicam")
+
+
+@router.post("/api/energy/aylik")
+async def monthly_energy(req: AylikEnerjiRequest):
+    """12 aylık ısıtma/soğutma/aydınlatma tüketim grafiği."""
+    try:
+        return aylik_enerji_tuketim(
+            toplam_alan=req.toplam_alan,
+            kat_sayisi=req.kat_sayisi,
+            latitude=req.latitude,
+            duvar_yalitim=req.duvar_yalitim,
+            pencere_tipi=req.pencere_tipi,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════
+# I5. GÜNEŞ PANELİ ROI
+# ══════════════════════════════════════
+
+class GunesPaneliRequest(BaseModel):
+    cati_alani: float = Field(default=140.0, gt=0)
+    panel_verimi: float = Field(default=0.20, ge=0.10, le=0.30)
+    kullanilabilir_oran: float = Field(default=0.60, ge=0.20, le=0.90)
+    yillik_gunes_saat: float = Field(default=1700, ge=800, le=2500)
+    panel_birim_fiyat: float = Field(default=5500, gt=0)
+    elektrik_fiyat: float = Field(default=4.50, gt=0)
+
+
+@router.post("/api/energy/solar")
+async def solar_roi(req: GunesPaneliRequest):
+    """Güneş paneli yatırım geri dönüş analizi."""
+    try:
+        return gunes_paneli_roi(
+            cati_alani=req.cati_alani,
+            panel_verimi=req.panel_verimi,
+            kullanilabilir_oran=req.kullanilabilir_oran,
+            yillik_gunes_saat=req.yillik_gunes_saat,
+            panel_birim_fiyat=req.panel_birim_fiyat,
+            elektrik_fiyat=req.elektrik_fiyat,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════
+# I6. ISI KAYBI HARİTASI
+# ══════════════════════════════════════
+
+class IsiKaybiRequest(BaseModel):
+    toplam_alan: float = Field(default=560.0, gt=0)
+    kat_sayisi: int = Field(default=4, ge=1)
+    duvar_yalitim: str = Field(default="duvar_5cm_eps")
+    pencere_tipi: str = Field(default="isicam")
+    cati_yalitimli: bool = Field(default=True)
+    pencere_duvar_orani: float = Field(default=0.25, ge=0.05, le=0.60)
+
+
+@router.post("/api/energy/heat-loss")
+async def heat_loss_map(req: IsiKaybiRequest):
+    """Duvar/cam/çatı/döşeme bazlı ısı kaybı dağılım haritası."""
+    try:
+        return isi_kaybi_haritasi(
+            toplam_alan=req.toplam_alan,
+            kat_sayisi=req.kat_sayisi,
+            duvar_yalitim=req.duvar_yalitim,
+            pencere_tipi=req.pencere_tipi,
+            cati_yalitimli=req.cati_yalitimli,
+            pencere_duvar_orani=req.pencere_duvar_orani,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
