@@ -5,6 +5,8 @@ import { calculateFeasibility, downloadPDFReport, generateAICommentary, analyzeE
 import { formatNumber, cn } from '@/lib/utils'
 import { EarthquakePanel } from './EarthquakePanel'
 import { EnergyPanel } from './EnergyPanel'
+import { ApartmentMixEditor, type ApartmentMixSummary } from './ApartmentMixEditor'
+import { InvestmentDecisionPanel } from './InvestmentDecisionPanel'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   AreaChart, Area, Cell, LineChart, Line, Legend, ReferenceLine,
@@ -12,7 +14,7 @@ import {
 import {
   BarChart3, ArrowLeft, Loader2, TriangleAlert, TrendingUp, TrendingDown,
   DollarSign, Percent, Calculator, RefreshCw, Flame, Zap, Clock, Target,
-  FileDown, BrainCircuit, MessageSquareText,
+  FileDown, BrainCircuit, MessageSquareText, Building2,
 } from 'lucide-react'
 
 interface FeasibilityData {
@@ -39,6 +41,9 @@ export function FeasibilityStep() {
   const [pdfLoading, setPdfLoading] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiYorum, setAiYorum] = useState<string | null>(null)
+  const [apartmentMix, setApartmentMix] = useState<ApartmentMixSummary | null>(null)
+  const [giderProfili, setGiderProfili] = useState<'scurve' | 'frontloaded' | 'linear'>('scurve')
+  const [showMixEditor, setShowMixEditor] = useState(false)
 
   // Restore from store if project was loaded
   useEffect(() => {
@@ -65,29 +70,73 @@ export function FeasibilityStep() {
   const setOnSatis = (v: number) => setFeasibilityFormState({ onSatis: v })
 
   const handleCalculate = useCallback(async () => {
-    if (!hesaplama) return
+    if (!hesaplama || !parselData) return
     setLoading(true)
     setError(null)
+
+    const binaW = hesaplama.cekme_polygon_coords
+      ? Math.max(...hesaplama.cekme_polygon_coords.map(c => c.x)) - Math.min(...hesaplama.cekme_polygon_coords.map(c => c.x))
+      : parselData.bounds.width - imarParams.on_bahce - imarParams.arka_bahce
+    const binaH = hesaplama.cekme_polygon_coords
+      ? Math.max(...hesaplama.cekme_polygon_coords.map(c => c.y)) - Math.min(...hesaplama.cekme_polygon_coords.map(c => c.y))
+      : parselData.bounds.height - 2 * imarParams.yan_bahce
+
     try {
-      const result = await calculateFeasibility({
-        toplam_insaat_alani: hesaplama.toplam_insaat_alani,
-        kat_basi_net_alan: hesaplama.kat_basi_net_alan,
-        kat_adedi: imarParams.kat_adedi,
-        daire_sayisi_per_kat: daireSayisiPerKat,
-        il, kalite,
-        arsa_maliyeti: arsaMaliyeti,
-        otopark_arac_sayisi: imarParams.kat_adedi * daireSayisiPerKat,
-        m2_satis_fiyati: m2Fiyat,
-        daire_tipi: '3+1',
-        cephe_yon: 'güney',
-        insaat_suresi_ay: insaatSuresi,
-        satis_suresi_ay: 12,
-        on_satis_orani: onSatis,
-      }) as FeasibilityData
-      setData(result)
-      setFeasibilityData(result)
-      markCompleted('feasibility')
-      toast.success('Fizibilite Hesaplandı', `Kâr marjı: %${result.ozet.kar_marji}`)
+      // Paralel: fizibilite + deprem + enerji tek seferde
+      const [fizResult, depremResult, enerjiResult] = await Promise.allSettled([
+        calculateFeasibility({
+          toplam_insaat_alani: hesaplama.toplam_insaat_alani,
+          kat_basi_net_alan: hesaplama.kat_basi_net_alan,
+          kat_adedi: imarParams.kat_adedi,
+          daire_sayisi_per_kat: daireSayisiPerKat,
+          il, kalite,
+          arsa_maliyeti: arsaMaliyeti,
+          otopark_arac_sayisi: imarParams.kat_adedi * daireSayisiPerKat,
+          m2_satis_fiyati: m2Fiyat,
+          daire_tipi: '3+1',
+          cephe_yon: 'güney',
+          insaat_suresi_ay: insaatSuresi,
+          satis_suresi_ay: 12,
+          on_satis_orani: onSatis,
+          gider_profili: giderProfili,
+        }),
+        analyzeEarthquake({
+          latitude: 39.93, longitude: 32.86,
+          kat_sayisi: imarParams.kat_adedi, zemin_sinifi: 'ZC',
+          bina_genisligi: binaW, bina_derinligi: binaH,
+        }),
+        calculateEnergy({
+          toplam_alan: hesaplama.toplam_insaat_alani,
+          kat_sayisi: imarParams.kat_adedi,
+          duvar_yalitim: 'duvar_8cm_eps', pencere_tipi: 'isicam',
+          cati_yalitimli: true, pencere_duvar_orani: 0.25,
+          isitma_sistemi: 'dogalgaz_kombi', latitude: 39.93,
+        }),
+      ])
+
+      // Fizibilite — ana hesaplama
+      if (fizResult.status === 'fulfilled') {
+        const result = fizResult.value as FeasibilityData
+        setData(result)
+        setFeasibilityData(result)
+        markCompleted('feasibility')
+        toast.success('Fizibilite', `Kâr marjı: %${result.ozet.kar_marji}`)
+      } else {
+        throw new Error(fizResult.reason?.message || 'Fizibilite hesaplama hatası')
+      }
+
+      // Deprem — arka planda
+      if (depremResult.status === 'fulfilled') {
+        useProjectStore.getState().setEarthquakeData(depremResult.value as Record<string, unknown>)
+        toast.success('Deprem', 'Analiz tamamlandı')
+      }
+
+      // Enerji — arka planda
+      if (enerjiResult.status === 'fulfilled') {
+        useProjectStore.getState().setEnergyData(enerjiResult.value as Record<string, unknown>)
+        toast.success('Enerji', 'Hesaplama tamamlandı')
+      }
+
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Hesaplama hatası'
       setError(msg)
@@ -95,7 +144,7 @@ export function FeasibilityStep() {
     } finally {
       setLoading(false)
     }
-  }, [hesaplama, imarParams, il, kalite, m2Fiyat, arsaMaliyeti, daireSayisiPerKat, insaatSuresi, onSatis, markCompleted, setFeasibilityData])
+  }, [hesaplama, parselData, imarParams, il, kalite, m2Fiyat, arsaMaliyeti, daireSayisiPerKat, insaatSuresi, onSatis, giderProfili, markCompleted, setFeasibilityData])
 
   // PDF İndir
   const handleDownloadPDF = useCallback(async () => {
@@ -220,10 +269,24 @@ export function FeasibilityStep() {
               onChange={(e) => setOnSatis(Number(e.target.value))} className="w-24" />
             <span className="font-mono text-xs">{(onSatis * 100).toFixed(0)}%</span>
           </div>
+          <div className="flex items-center gap-2 text-sm">
+            <label className="text-xs text-text-muted">Gider Profili:</label>
+            <select value={giderProfili} onChange={(e) => setGiderProfili(e.target.value as 'scurve' | 'frontloaded' | 'linear')}
+              className="input-field text-xs py-1 w-28">
+              <option value="scurve">S-Eğri (Normal)</option>
+              <option value="frontloaded">Ön Yüklü</option>
+              <option value="linear">Doğrusal</option>
+            </select>
+          </div>
+          <button onClick={() => setShowMixEditor(!showMixEditor)}
+            className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5">
+            <Building2 className="w-3.5 h-3.5" />
+            {showMixEditor ? 'Karma Kapat' : 'Daire Karması'}
+          </button>
           <button onClick={handleCalculate} disabled={loading}
             className="btn-primary flex items-center gap-2 text-sm ml-auto">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calculator className="w-4 h-4" />}
-            Hesapla
+            {loading ? 'Hesaplanıyor (3 modül)...' : 'Hesapla (Fizibilite + Deprem + Enerji)'}
           </button>
         </div>
         {error && (
@@ -233,9 +296,33 @@ export function FeasibilityStep() {
         )}
       </div>
 
+      {/* Apartment Mix Editor */}
+      {showMixEditor && (
+        <div className="bg-white rounded-xl border border-border p-5 mb-6">
+          <ApartmentMixEditor
+            katAdedi={imarParams.kat_adedi}
+            katBasiBrutAlan={hesaplama?.kat_basi_brut_alan || 150}
+            m2SatisFiyati={m2Fiyat}
+            onChange={setApartmentMix}
+          />
+        </div>
+      )}
+
       {/* Results */}
       {data && (
         <div className="space-y-6">
+          {/* Investment Decision Panel — GO/NO-GO */}
+          <InvestmentDecisionPanel
+            karMarji={data.ozet.kar_marji}
+            irr={data.irr_yillik}
+            roi={data.ozet.roi}
+            zararOlasiligi={data.monte_carlo?.zarar_olasiligi || 0}
+            paybackAy={data.nakit_akisi?.payback_ay || null}
+            toplamMaliyet={data.ozet.toplam_gider || data.maliyet?.toplam_maliyet || 0}
+            toplamGelir={data.ozet.toplam_gelir || 0}
+            insaatSuresiAy={insaatSuresi}
+          />
+
           {/* Metric cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <MetricCard icon={<DollarSign />} label="Toplam Maliyet" value={`₺${fmtM(data.ozet.toplam_gider)}`} />
