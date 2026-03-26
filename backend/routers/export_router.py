@@ -180,3 +180,51 @@ def _generate_svg(rooms: list[ExportRoom], bw: float, bh: float, svg_w: int, svg
 
     lines.append('</svg>')
     return '\n'.join(lines)
+
+
+# ══════════════════════════════════════
+# PDF RAPOR
+# ══════════════════════════════════════
+
+class PDFReportRequest(BaseModel):
+    proje_adi: str = "İsimsiz Proje"
+    parsel_data: dict = {}
+    imar_data: dict = {}
+    fizibilite_data: dict = {}
+    deprem_data: Optional[dict] = None
+    enerji_data: Optional[dict] = None
+    ai_yorum: Optional[str] = None
+
+
+@router.post("/pdf")
+async def export_pdf(req: PDFReportRequest):
+    """Profesyonel fizibilite PDF raporu üret (15-20 sayfa)."""
+    try:
+        from export.pdf_report import generate_pdf_report
+
+        pdf_bytes = generate_pdf_report(
+            proje_adi=req.proje_adi,
+            parsel_data=req.parsel_data,
+            imar_data=req.imar_data,
+            fizibilite_data=req.fizibilite_data,
+            deprem_data=req.deprem_data,
+            enerji_data=req.enerji_data,
+            ai_yorum=req.ai_yorum,
+        )
+
+        # Dosyaya kaydet ve dön
+        filename = f"imarPRO_rapor_{uuid.uuid4().hex[:8]}.pdf"
+        filepath = os.path.join(EXPORT_DIR, filename)
+        with open(filepath, 'wb') as f:
+            f.write(pdf_bytes)
+
+        return FileResponse(
+            filepath,
+            media_type='application/pdf',
+            filename=filename,
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+        )
+
+    except Exception as e:
+        logger.error(f"PDF rapor hatası: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

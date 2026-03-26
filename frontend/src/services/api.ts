@@ -141,3 +141,29 @@ export function getExportDXFUrl() {
 export function getExportSVGUrl() {
   return `${API_BASE}/api/export/svg`
 }
+
+export async function downloadPDFReport(params: Record<string, unknown>) {
+  const res = await fetch(`${API_BASE}/api/export/pdf`, {
+    method: 'POST',
+    headers: getApiHeaders(),
+    body: JSON.stringify(params),
+  })
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(error.detail || `PDF oluşturulamadı (HTTP ${res.status})`)
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.download = `imarPRO_rapor_${Date.now()}.pdf`
+  link.href = url
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+export async function generateAICommentary(params: Record<string, unknown>) {
+  return request<{ yorum: string }>('/api/feasibility/ai-yorum', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}

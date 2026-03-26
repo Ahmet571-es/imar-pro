@@ -3,7 +3,7 @@ Fizibilite API Router — Maliyet, gelir, kâr, duyarlılık, Monte Carlo, nakit
 """
 
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import Optional
 
@@ -153,3 +153,92 @@ async def sensitivity_only(baz_maliyet: float, baz_gelir: float):
 async def list_iller():
     """İl listesi (maliyet verisi olan)."""
     return get_iller()
+
+
+class AIYorumRequest(BaseModel):
+    toplam_maliyet: float = 0
+    toplam_gelir: float = 0
+    kar_marji: float = 0
+    irr: float = 0
+    zarar_olasiligi: float = 0
+    payback_ay: int = 0
+    il: str = "Ankara"
+    kat_adedi: int = 4
+    toplam_daire: int = 8
+    claude_api_key: str = ""
+
+
+@router.post("/ai-yorum")
+async def generate_ai_commentary(req: AIYorumRequest, request: Request):
+    """Claude AI ile fizibilite sonuçlarını Türkçe yorumla."""
+    import os
+
+    api_key = (
+        request.headers.get("X-Claude-Api-Key", "").strip()
+        or req.claude_api_key
+        or os.getenv("ANTHROPIC_API_KEY", "")
+    )
+
+    if not api_key:
+        return {"yorum": _fallback_yorum(req)}
+
+    try:
+        from anthropic import Anthropic
+        client = Anthropic(api_key=api_key)
+
+        prompt = f"""Sen bir gayrimenkul fizibilite uzmanısın. Aşağıdaki proje verilerini analiz et ve Türkçe profesyonel bir yorum yaz.
+
+Proje Verileri:
+- İl: {req.il}
+- Kat Adedi: {req.kat_adedi}
+- Toplam Daire: {req.toplam_daire}
+- Toplam Maliyet: ₺{req.toplam_maliyet:,.0f}
+- Toplam Gelir: ₺{req.toplam_gelir:,.0f}
+- Kâr Marjı: %{req.kar_marji:.1f}
+- Yıllık IRR: %{req.irr:.1f}
+- Monte Carlo Zarar Olasılığı: %{req.zarar_olasiligi:.1f}
+- Payback Süresi: {req.payback_ay} ay
+
+Lütfen şu başlıklar altında yorum yap:
+1. Genel Değerlendirme (kârlılık düzeyi)
+2. Risk Analizi (zarar olasılığı, hassas parametreler)
+3. Piyasa Karşılaştırma ({req.il} bölgesi için)
+4. Öneriler (maliyet optimizasyonu, fiyatlandırma stratejisi)
+
+Kısa ve öz yaz, maksimum 300 kelime."""
+
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=800,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        yorum = message.content[0].text if message.content else ""
+        return {"yorum": yorum}
+
+    except Exception as e:
+        logger.error(f"AI yorum hatası: {e}")
+        return {"yorum": _fallback_yorum(req)}
+
+
+def _fallback_yorum(req) -> str:
+    """API key yokken basit otomatik yorum."""
+    if req.kar_marji > 20:
+        risk = "düşük riskli"
+        verdict = "güçlü bir yatırım fırsatı"
+    elif req.kar_marji > 10:
+        risk = "orta riskli"
+        verdict = "kabul edilebilir bir yatırım"
+    elif req.kar_marji > 0:
+        risk = "yüksek riskli"
+        verdict = "dikkatli değerlendirilmesi gereken bir proje"
+    else:
+        risk = "çok yüksek riskli"
+        verdict = "mevcut parametrelerle kârlı olmayan bir proje"
+
+    return (
+        f"Bu proje %{req.kar_marji:.1f} kâr marjı ile {risk} ve {verdict} olarak değerlendirilmektedir. "
+        f"Monte Carlo simülasyonuna göre zarar olasılığı %{req.zarar_olasiligi:.1f} seviyesindedir. "
+        f"Yatırımın geri dönüş süresi {req.payback_ay} ay olarak hesaplanmıştır. "
+        f"Detaylı analiz için bir gayrimenkul değerleme uzmanı ile görüşmeniz önerilir."
+    )

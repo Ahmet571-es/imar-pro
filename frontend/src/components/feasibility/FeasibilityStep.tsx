@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
 import { toast } from '@/stores/toastStore'
-import { calculateFeasibility } from '@/services/api'
+import { calculateFeasibility, downloadPDFReport, generateAICommentary, analyzeEarthquake, calculateEnergy } from '@/services/api'
 import { formatNumber, cn } from '@/lib/utils'
 import { EarthquakePanel } from './EarthquakePanel'
 import { EnergyPanel } from './EnergyPanel'
@@ -12,6 +12,7 @@ import {
 import {
   BarChart3, ArrowLeft, Loader2, TriangleAlert, TrendingUp, TrendingDown,
   DollarSign, Percent, Calculator, RefreshCw, Flame, Zap, Clock, Target,
+  FileDown, BrainCircuit, MessageSquareText,
 } from 'lucide-react'
 
 interface FeasibilityData {
@@ -35,6 +36,9 @@ export function FeasibilityStep() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<FeasibilityData | null>(null)
+  const [pdfLoading, setPdfLoading] = useState(false)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiYorum, setAiYorum] = useState<string | null>(null)
 
   // Restore from store if project was loaded
   useEffect(() => {
@@ -92,6 +96,62 @@ export function FeasibilityStep() {
       setLoading(false)
     }
   }, [hesaplama, imarParams, il, kalite, m2Fiyat, arsaMaliyeti, daireSayisiPerKat, insaatSuresi, onSatis, markCompleted, setFeasibilityData])
+
+  // PDF İndir
+  const handleDownloadPDF = useCallback(async () => {
+    if (!data) return
+    setPdfLoading(true)
+    try {
+      await downloadPDFReport({
+        proje_adi: useProjectStore.getState().currentProjectName || 'İsimsiz Proje',
+        parsel_data: parselData ? {
+          alan_m2: parselData.alan_m2,
+          cevre_m: parselData.cevre_m,
+          kose_sayisi: parselData.kose_sayisi,
+        } : {},
+        imar_data: {
+          kat_adedi: imarParams.kat_adedi,
+          taks: imarParams.taks,
+          kaks: imarParams.kaks,
+          toplam_insaat_alani: hesaplama?.toplam_insaat_alani || 0,
+          on_bahce: imarParams.on_bahce,
+          yan_bahce: imarParams.yan_bahce,
+          arka_bahce: imarParams.arka_bahce,
+        },
+        fizibilite_data: data,
+        ai_yorum: aiYorum || undefined,
+      })
+      toast.success('PDF İndirildi', '15+ sayfa profesyonel rapor')
+    } catch (e: unknown) {
+      toast.error('PDF Hatası', e instanceof Error ? e.message : 'PDF oluşturulamadı')
+    } finally {
+      setPdfLoading(false)
+    }
+  }, [data, parselData, imarParams, hesaplama, aiYorum])
+
+  // AI Yorum
+  const handleAICommentary = useCallback(async () => {
+    if (!data) return
+    setAiLoading(true)
+    try {
+      const result = await generateAICommentary({
+        toplam_maliyet: data.maliyet?.toplam_maliyet || 0,
+        toplam_gelir: data.ozet?.toplam_gelir || 0,
+        kar_marji: data.ozet?.kar_marji || 0,
+        irr: data.irr_yillik || 0,
+        zarar_olasiligi: data.monte_carlo?.zarar_olasiligi || 0,
+        payback_ay: data.nakit_akisi?.payback_ay || 0,
+        il, kat_adedi: imarParams.kat_adedi,
+        toplam_daire: data.parametreler?.toplam_daire || 8,
+      }) as { yorum: string }
+      setAiYorum(result.yorum)
+      toast.success('AI Yorum', 'Fizibilite analizi tamamlandı')
+    } catch (e: unknown) {
+      toast.error('AI Yorum Hatası', e instanceof Error ? e.message : 'Yorum oluşturulamadı')
+    } finally {
+      setAiLoading(false)
+    }
+  }, [data, il, imarParams])
 
   if (!parselData || !hesaplama) {
     return (
@@ -365,6 +425,44 @@ export function FeasibilityStep() {
                 </ResponsiveContainer>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action bar: PDF + AI */}
+      {data && (
+        <div className="bg-white rounded-xl border border-border p-4 mt-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <button onClick={handleDownloadPDF} disabled={pdfLoading}
+              className="btn-primary flex items-center gap-2 text-sm px-5 py-2.5">
+              {pdfLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+              {pdfLoading ? 'PDF Hazırlanıyor...' : 'PDF Rapor İndir (15+ sayfa)'}
+            </button>
+
+            <button onClick={handleAICommentary} disabled={aiLoading}
+              className="btn-secondary flex items-center gap-2 text-sm px-4 py-2.5">
+              {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <BrainCircuit className="w-4 h-4" />}
+              {aiLoading ? 'AI Analiz Ediyor...' : aiYorum ? 'AI Yorumu Yenile' : 'AI Değerlendirme'}
+            </button>
+
+            <div className="flex-1" />
+            <span className="text-[10px] text-text-muted">
+              PDF rapor: kapak + içindekiler + 4 grafik + tüm tablolar + yasal uyarı
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* AI Yorum Panel */}
+      {aiYorum && (
+        <div className="bg-gradient-to-r from-indigo-50 to-blue-50 rounded-xl border border-indigo-100 p-5 mt-4">
+          <div className="flex items-center gap-2 mb-3">
+            <MessageSquareText className="w-5 h-5 text-indigo-600" />
+            <h3 className="font-semibold text-sm text-indigo-900">AI Değerlendirme</h3>
+            <span className="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">Claude</span>
+          </div>
+          <div className="text-sm text-text leading-relaxed whitespace-pre-line">
+            {aiYorum}
           </div>
         </div>
       )}
