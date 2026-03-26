@@ -219,7 +219,7 @@ def _estimate_ss(lat: float, lon: float, il_adi: str = "") -> tuple[float, float
         import requests
         url = "https://tdth.afad.gov.tr/api/spectrum"
         params = {"latitude": lat, "longitude": lon, "soilType": "ZC"}
-        resp = requests.get(url, params=params, timeout=10,
+        resp = requests.get(url, params=params, timeout=3,
                            headers={"User-Agent": "Mozilla/5.0",
                                     "Accept": "application/json"})
         if resp.status_code == 200:
@@ -239,7 +239,7 @@ def _estimate_ss(lat: float, lon: float, il_adi: str = "") -> tuple[float, float
         import requests
         url2 = (f"https://deprem.afad.gov.tr/api/spectral-values?"
                 f"lat={lat}&lng={lon}&soilType=ZC")
-        resp2 = requests.get(url2, timeout=10,
+        resp2 = requests.get(url2, timeout=3,
                              headers={"User-Agent": "Mozilla/5.0"})
         if resp2.status_code == 200:
             data2 = resp2.json()
@@ -297,7 +297,7 @@ def test_afad_api() -> dict:
             "https://tdth.afad.gov.tr/api/spectrum",
             params={"latitude": 39.93, "longitude": 32.86,
                     "soilType": "ZC"},
-            timeout=10,
+            timeout=5,
             headers={"User-Agent": "Mozilla/5.0"},
         )
         results["tdth_api"] = resp.status_code == 200
@@ -310,7 +310,7 @@ def test_afad_api() -> dict:
         resp2 = requests.get(
             "https://deprem.afad.gov.tr/api/spectral-values",
             params={"lat": 39.93, "lng": 32.86, "soilType": "ZC"},
-            timeout=10,
+            timeout=5,
             headers={"User-Agent": "Mozilla/5.0"},
         )
         results["deprem_api"] = resp2.status_code == 200

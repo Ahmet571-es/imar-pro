@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 TKGM_CBS_BASE = "https://cbsapi.tkgm.gov.tr/megsiswebapi.v3/api/parsel"
 TKGM_WFS_BASE = "https://cbsapi.tkgm.gov.tr/megsiswebapi.v3/api/iltce"
-TIMEOUT = 15
+TIMEOUT = 5
 MAX_RETRIES = 3
 
 TKGM_HEADERS = {
@@ -273,7 +273,7 @@ def test_tkgm_connection() -> dict:
     try:
         resp = requests.get(
             f"{TKGM_CBS_BASE}/06/01/01/100/1",
-            timeout=10, headers=TKGM_HEADERS,
+            timeout=TIMEOUT, headers=TKGM_HEADERS,
         )
         results["cbs_api"] = resp.status_code in (200, 404)
         results["details"].append(
@@ -286,7 +286,7 @@ def test_tkgm_connection() -> dict:
         resp = requests.get(
             TKGM_WFS_BASE,
             params={"service": "WFS", "request": "GetCapabilities"},
-            timeout=10, headers=TKGM_HEADERS,
+            timeout=TIMEOUT, headers=TKGM_HEADERS,
         )
         results["wfs_api"] = resp.status_code == 200
         results["details"].append(

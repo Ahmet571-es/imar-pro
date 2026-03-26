@@ -29,14 +29,15 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS — Vercel frontend
+# CORS — Vercel frontend + local dev
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:3000",
-        "https://*.vercel.app",
+        "http://localhost:4173",
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,4 +66,16 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    """Detaylı sağlık kontrolü — deploy monitoring için."""
+    import sys
+    from export.pdf_report import FONT_NAME
+    from config.afad_ss_s1 import AFAD_81_IL
+
+    return {
+        "status": "ok",
+        "python": sys.version.split()[0],
+        "services": {
+            "pdf_font": FONT_NAME,
+            "afad_iller": len(AFAD_81_IL),
+        },
+    }

@@ -11,15 +11,22 @@ function getApiHeaders(): Record<string, string> {
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: getApiHeaders(),
-    ...options,
-  })
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(error.detail || `HTTP ${res.status}`)
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      headers: getApiHeaders(),
+      ...options,
+    })
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new Error(error.detail || `Sunucu hatası (HTTP ${res.status})`)
+    }
+    return res.json()
+  } catch (e) {
+    if (e instanceof TypeError && e.message.includes('fetch')) {
+      throw new Error('Sunucuya bağlanılamıyor. Backend çalışıyor mu? VITE_API_URL doğru mu?')
+    }
+    throw e
   }
-  return res.json()
 }
 
 // ── Parsel API ──

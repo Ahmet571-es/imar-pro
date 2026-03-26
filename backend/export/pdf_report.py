@@ -55,6 +55,8 @@ def _register_fonts():
     font_paths = [
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         '/usr/share/fonts/dejavu/DejaVuSans.ttf',
+        '/usr/local/share/fonts/DejaVuSans.ttf',
+        os.path.join(os.path.dirname(__file__), '..', 'fonts', 'DejaVuSans.ttf'),
     ]
     for path in font_paths:
         if os.path.exists(path):
@@ -66,6 +68,23 @@ def _register_fonts():
                 return 'DejaVu'
             except Exception:
                 pass
+
+    # Fallback: Download DejaVu fonts if not found
+    try:
+        import urllib.request
+        font_dir = os.path.join(os.path.dirname(__file__), '..', 'fonts')
+        os.makedirs(font_dir, exist_ok=True)
+        base_url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf"
+        for fname in ['DejaVuSans.ttf', 'DejaVuSans-Bold.ttf']:
+            dest = os.path.join(font_dir, fname)
+            if not os.path.exists(dest):
+                urllib.request.urlretrieve(f"{base_url}/{fname}", dest)
+        pdfmetrics.registerFont(TTFont('DejaVu', os.path.join(font_dir, 'DejaVuSans.ttf')))
+        pdfmetrics.registerFont(TTFont('DejaVu-Bold', os.path.join(font_dir, 'DejaVuSans-Bold.ttf')))
+        return 'DejaVu'
+    except Exception:
+        pass
+
     return 'Helvetica'
 
 FONT_NAME = _register_fonts()
