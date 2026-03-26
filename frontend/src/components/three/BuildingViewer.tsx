@@ -30,6 +30,8 @@ import { CameraController, generateCameraPresets } from './CameraSystem'
 import { PostProcessingEffects } from './PostProcessing3D'
 import { ExportActions, type ExportActionsRef } from './ExportTools'
 import { RoomTooltip, InteractiveRoom, MeasurementLine, RoomDetailPanel, type RoomDetailData } from './RoomInteraction'
+import { RoomFurniture } from './FurniturePlaceholders'
+import { RoomLabel, FloorLevelMarkers, AxisGridLines, BuildingDimensions } from './Annotations3D'
 import type { MaterialDef } from './types3d'
 
 // ── View Mode Buttons ──
@@ -56,6 +58,9 @@ interface SceneProps {
   exploded: boolean
   showColumns: boolean
   showPostProcessing: boolean
+  showFurniture: boolean
+  showAnnotations: boolean
+  showAxisGrid: boolean
   constructionMonth: number
   show4D: boolean
   showCostHeatmap: boolean
@@ -78,6 +83,7 @@ function BuildingScene({
   floors, columns, building, viewMode,
   selectedFloor, sectionHeight, sectionVerticalPos, sunHour,
   exploded, showColumns, showPostProcessing,
+  showFurniture, showAnnotations, showAxisGrid,
   constructionMonth, show4D,
   showCostHeatmap, totalCost,
   hoveredRoom, selectedRoom, measureMode, measurePoints,
@@ -225,6 +231,16 @@ function BuildingScene({
                       } : undefined}
                     />
                   )}
+
+                  {/* Mobilya placeholder */}
+                  {showFurniture && doorsBuilt && (
+                    <RoomFurniture room={room} floorY={floor.floor_y} viewMode={viewMode} />
+                  )}
+
+                  {/* Oda etiketi + boyut çizgileri */}
+                  {showAnnotations && (
+                    <RoomLabel room={room} floorY={floor.floor_y} viewMode={viewMode} showDimensions={selectedFloor === floor.floor_index} />
+                  )}
                 </group>
               )
             })}
@@ -351,6 +367,17 @@ function BuildingScene({
         </>
       )}
 
+      {/* Annotations */}
+      {showAnnotations && (
+        <>
+          <FloorLevelMarkers building={building} viewMode={viewMode} />
+          <BuildingDimensions building={building} viewMode={viewMode} />
+        </>
+      )}
+
+      {/* Aks grid çizgileri */}
+      <AxisGridLines columns={columns} building={building} viewMode={viewMode} visible={showAxisGrid} />
+
       <MeasurementLine points={measurePoints} active={measureMode} />
     </>
   )
@@ -374,6 +401,9 @@ export function BuildingViewer({ floors, columns, building, totalCost = 0 }: Bui
   const [selectedFloor, setSelectedFloor] = useState(-1)
   const [showColumns, setShowColumns] = useState(false)
   const [showPostProcessing, setShowPostProcessing] = useState(true)
+  const [showFurniture, setShowFurniture] = useState(true)
+  const [showAnnotations, setShowAnnotations] = useState(false)
+  const [showAxisGrid, setShowAxisGrid] = useState(false)
   const [sectionHeight, setSectionHeight] = useState(building.total_height / 2)
   const [sectionVerticalPos, setSectionVerticalPos] = useState(0)
   const [sunHour, setSunHour] = useState(14)
@@ -489,6 +519,7 @@ export function BuildingViewer({ floors, columns, building, totalCost = 0 }: Bui
             sectionHeight={sectionHeight} sectionVerticalPos={sectionVerticalPos}
             sunHour={sunHour} exploded={viewMode === 'exploded'}
             showColumns={showColumns} showPostProcessing={showPostProcessing}
+            showFurniture={showFurniture} showAnnotations={showAnnotations} showAxisGrid={showAxisGrid}
             constructionMonth={constructionMonth} show4D={show4D}
             showCostHeatmap={showCostHeatmap} totalCost={totalCost}
             hoveredRoom={hoveredRoom} selectedRoom={selectedRoom}
@@ -568,6 +599,18 @@ export function BuildingViewer({ floors, columns, building, totalCost = 0 }: Bui
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={showColumns} onChange={(e) => setShowColumns(e.target.checked)} className="rounded" />
             Kolon Grid
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={showAxisGrid} onChange={(e) => setShowAxisGrid(e.target.checked)} className="rounded" />
+            Aks Çizgileri
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={showFurniture} onChange={(e) => setShowFurniture(e.target.checked)} className="rounded" />
+            🛋️ Mobilya
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={showAnnotations} onChange={(e) => setShowAnnotations(e.target.checked)} className="rounded" />
+            📐 Ölçüler
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={showPostProcessing} onChange={(e) => setShowPostProcessing(e.target.checked)} className="rounded" />
