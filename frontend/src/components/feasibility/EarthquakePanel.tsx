@@ -33,7 +33,7 @@ export function EarthquakePanel({ katSayisi, binaW, binaH }: Props) {
   // Restore from store
   useEffect(() => {
     if (earthquakeData && !data) {
-      setData(earthquakeData as unknown as EarthquakeData)
+      setData(earthquakeData as EarthquakeData)
     }
   }, [earthquakeData, data])
 
@@ -46,7 +46,7 @@ export function EarthquakePanel({ katSayisi, binaW, binaH }: Props) {
         bina_genisligi: binaW, bina_derinligi: binaH,
       }) as EarthquakeData
       setData(result)
-      setEarthquakeData(result as never)
+      setEarthquakeData(result)
       toast.success('Deprem Analizi', `Risk seviyesi: ${result.parametreler.risk_seviyesi}`)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Deprem analizi hatası'

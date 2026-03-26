@@ -27,7 +27,11 @@ interface FeasibilityData {
 }
 
 export function FeasibilityStep() {
-  const { parselData, hesaplama, imarParams, setStep, markCompleted, feasibilityData, setFeasibilityData } = useProjectStore()
+  const {
+    parselData, hesaplama, imarParams, setStep, markCompleted,
+    feasibilityData, setFeasibilityData,
+    feasibilityFormState, setFeasibilityFormState,
+  } = useProjectStore()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<FeasibilityData | null>(null)
@@ -35,18 +39,26 @@ export function FeasibilityStep() {
   // Restore from store if project was loaded
   useEffect(() => {
     if (feasibilityData && !data) {
-      setData(feasibilityData as unknown as FeasibilityData)
+      setData(feasibilityData as FeasibilityData)
     }
   }, [feasibilityData, data])
 
-  // Form state
-  const [il, setIl] = useState('Ankara')
-  const [kalite, setKalite] = useState('orta')
-  const [m2Fiyat, setM2Fiyat] = useState(45000)
-  const [arsaMaliyeti, setArsaMaliyeti] = useState(5000000)
-  const [daireSayisiPerKat, setDaireSayisiPerKat] = useState(2)
-  const [insaatSuresi, setInsaatSuresi] = useState(18)
-  const [onSatis, setOnSatis] = useState(0.30)
+  // Form state from store (persisted)
+  const il = feasibilityFormState.il
+  const kalite = feasibilityFormState.kalite
+  const m2Fiyat = feasibilityFormState.m2Fiyat
+  const arsaMaliyeti = feasibilityFormState.arsaMaliyeti
+  const daireSayisiPerKat = feasibilityFormState.daireSayisiPerKat
+  const insaatSuresi = feasibilityFormState.insaatSuresi
+  const onSatis = feasibilityFormState.onSatis
+
+  const setIl = (v: string) => setFeasibilityFormState({ il: v })
+  const setKalite = (v: string) => setFeasibilityFormState({ kalite: v })
+  const setM2Fiyat = (v: number) => setFeasibilityFormState({ m2Fiyat: v })
+  const setArsaMaliyeti = (v: number) => setFeasibilityFormState({ arsaMaliyeti: v })
+  const setDaireSayisiPerKat = (v: number) => setFeasibilityFormState({ daireSayisiPerKat: v })
+  const setInsaatSuresi = (v: number) => setFeasibilityFormState({ insaatSuresi: v })
+  const setOnSatis = (v: number) => setFeasibilityFormState({ onSatis: v })
 
   const handleCalculate = useCallback(async () => {
     if (!hesaplama) return
@@ -69,7 +81,7 @@ export function FeasibilityStep() {
         on_satis_orani: onSatis,
       }) as FeasibilityData
       setData(result)
-      setFeasibilityData(result as never)
+      setFeasibilityData(result)
       markCompleted('feasibility')
       toast.success('Fizibilite Hesaplandı', `Kâr marjı: %${result.ozet.kar_marji}`)
     } catch (e: unknown) {

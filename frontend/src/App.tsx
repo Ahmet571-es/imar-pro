@@ -76,18 +76,23 @@ function AppContent() {
   }, [handleSave])
 
   // Auto-save when data changes (isDirty) with debounce
+  // Uses getState() to avoid stale closures
   const { isDirty: currentDirty } = useProjectStore()
   useEffect(() => {
-    if (!currentProjectId || !currentDirty) return
+    if (!currentDirty) return
     const timer = setTimeout(async () => {
-      const data = serialize()
-      const success = await updateProject(currentProjectId, data as unknown as Record<string, unknown>)
+      const state = useProjectStore.getState()
+      if (!state.currentProjectId || !state.isDirty) return
+      const data = state.serialize()
+      const success = await useProjectListStore.getState().updateProject(
+        state.currentProjectId,
+        data as unknown as Record<string, unknown>
+      )
       if (success) {
-        markSaved()
+        useProjectStore.getState().markSaved()
       }
-    }, 3000) // 3 second debounce for auto-save
+    }, 3000)
     return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDirty])
 
   // Loading splash

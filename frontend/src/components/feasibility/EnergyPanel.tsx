@@ -39,7 +39,7 @@ export function EnergyPanel({ toplamAlan, katSayisi }: Props) {
   // Restore from store
   useEffect(() => {
     if (energyData && !data) {
-      setData(energyData as unknown as EnergyData)
+      setData(energyData as EnergyData)
     }
   }, [energyData, data])
 
@@ -53,7 +53,7 @@ export function EnergyPanel({ toplamAlan, katSayisi }: Props) {
         isitma_sistemi: 'dogalgaz_kombi', latitude: 39.93,
       }) as EnergyData
       setData(result)
-      setEnergyData(result as never)
+      setEnergyData(result)
       toast.success('Enerji Hesaplandı', `Enerji sınıfı: ${result.enerji_sinifi}`)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Enerji hesap hatası'

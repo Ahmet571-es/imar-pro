@@ -62,15 +62,16 @@ export function ThreeDStep() {
 
   // Get plan rooms from store, fallback to demo
   const planRooms = useMemo(() => {
-    if (planResults?.alternatives) {
-      const plans = planResults.alternatives as unknown as { rooms: typeof DEMO_ROOMS }[]
+    if (planResults) {
+      const raw = planResults as { plans?: { rooms: typeof DEMO_ROOMS }[]; alternatives?: { rooms: typeof DEMO_ROOMS }[] }
+      const plans = raw.plans || raw.alternatives || []
       const plan = plans[selectedPlanIndex] || plans[0]
       if (plan?.rooms?.length > 0) return plan.rooms
     }
     return DEMO_ROOMS
   }, [planResults, selectedPlanIndex])
 
-  const isUsingDemoData = !planResults?.alternatives
+  const isUsingDemoData = !planResults
 
   // Fetch building data
   useEffect(() => {
@@ -208,11 +209,12 @@ export function ThreeDStep() {
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
               </div>
             }>
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               <BuildingViewer
-                floors={buildingData.floors as never}
-                columns={buildingData.columns as never}
-                building={buildingData.building as never}
-                materials={buildingData.materials as never}
+                floors={buildingData.floors as any}
+                columns={buildingData.columns as any}
+                building={buildingData.building as any}
+                materials={buildingData.materials as any}
               />
             </Suspense>
           )}

@@ -122,33 +122,42 @@ export function PlanStep() {
   const {
     parselData, hesaplama, imarParams, setStep, markCompleted, parselTipi,
     planResults, selectedPlanIndex, setPlanResults, setSelectedPlanIndex,
+    planFormState, setPlanFormState,
   } = useProjectStore()
 
-  const [daireTipi, setDaireTipi] = useState('3+1')
-  const [odalar, setOdalar] = useState<OdaInput[]>(DEFAULT_ODALAR['3+1'])
-  const [sunDir, setSunDir] = useState('south')
+  // Form state from store (persisted across sessions)
+  const daireTipi = planFormState.daireTipi || '3+1'
+  const odalar = planFormState.odalar?.length > 0 ? planFormState.odalar : DEFAULT_ODALAR[daireTipi] || DEFAULT_ODALAR['3+1']
+  const sunDir = planFormState.sunDir || 'south'
+
+  const setDaireTipi = (t: string) => setPlanFormState({ daireTipi: t })
+  const setOdalar = (o: OdaInput[]) => setPlanFormState({ odalar: o })
+  const setSunDir = (s: string) => setPlanFormState({ sunDir: s })
+
   const [loading, setLoading] = useState(false)
   const [buildableArea, setBuildableArea] = useState<{ width: number; height: number } | null>(null)
   const [inputMode, setInputMode] = useState<'form' | 'nlp'>('form')
   const [nlpText, setNlpText] = useState('')
   const [showAxisGrid, setShowAxisGrid] = useState(false)
 
-  // Read plans from store (restored from project save)
-  const plans: PlanResult[] = (planResults?.alternatives as unknown as PlanResult[]) || []
+  // Read plans from store (type-safe — raw API response)
+  const plans: PlanResult[] = (planResults as { plans?: PlanResult[] })?.plans
+    || (planResults as { alternatives?: PlanResult[] })?.alternatives
+    || []
   const selectedPlan = selectedPlanIndex
 
-  // Restore buildable area from plans if available
+  // Restore buildable area from plan results
   useEffect(() => {
-    if (planResults && (planResults as unknown as Record<string, unknown>).buildable_area) {
-      setBuildableArea((planResults as unknown as Record<string, unknown>).buildable_area as { width: number; height: number })
+    const raw = planResults as { buildable_area?: { width: number; height: number } } | null
+    if (raw?.buildable_area) {
+      setBuildableArea(raw.buildable_area)
     }
   }, [planResults])
 
   const totalM2 = odalar.reduce((s, o) => s + o.m2, 0)
 
   const handleDaireTipiChange = (tip: string) => {
-    setDaireTipi(tip)
-    setOdalar(DEFAULT_ODALAR[tip] || DEFAULT_ODALAR['3+1'])
+    setPlanFormState({ daireTipi: tip, odalar: DEFAULT_ODALAR[tip] || DEFAULT_ODALAR['3+1'] })
   }
 
   const updateOda = (index: number, field: keyof OdaInput, value: string | number) => {
@@ -308,12 +317,8 @@ export function PlanStep() {
         buildable_area: { width: number; height: number }
       }
 
-      // Write to store (persisted)
-      setPlanResults({
-        alternatives: result.plans as never,
-        generation_time_ms: 0,
-        buildable_area: result.buildable_area,
-      } as never)
+      // Write raw API response to store (persisted)
+      setPlanResults(result)
       setSelectedPlanIndex(0)
       setBuildableArea(result.buildable_area)
 

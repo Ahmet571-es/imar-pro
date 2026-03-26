@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { useProjectListStore, type SavedProject } from '@/stores/projectListStore'
 import { useProjectStore } from '@/stores/projectStore'
+import type { WizardStep } from '@/types'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { toast } from '@/stores/toastStore'
 import {
@@ -68,8 +69,8 @@ export function ProjectsDashboard({ onOpenProject }: Props) {
 
     // Ensure we land on the right step
     const savedStep = project.data?.currentStep as string | undefined
-    if (savedStep) {
-      projectStore.setStep(savedStep as never)
+    if (savedStep && ['parcel', 'zoning', 'plan', '3d', 'feasibility'].includes(savedStep)) {
+      projectStore.setStep(savedStep as WizardStep)
     }
 
     toast.info('Proje Açıldı', project.name)
@@ -85,8 +86,16 @@ export function ProjectsDashboard({ onOpenProject }: Props) {
     }
   }
 
-  const handleQuickStart = () => {
+  const handleQuickStart = async () => {
     projectStore.resetProject()
+    // Auto-create a project so save works
+    if (user) {
+      const name = `Hızlı Proje — ${new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+      const id = await saveProject(user.id, name, {})
+      if (id) {
+        projectStore.setCurrentProject(id, name)
+      }
+    }
     projectStore.setStep('parcel')
     onOpenProject()
   }

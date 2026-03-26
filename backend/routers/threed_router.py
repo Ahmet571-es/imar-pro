@@ -4,7 +4,7 @@
 
 import os
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import Optional
 
@@ -242,9 +242,13 @@ def _generate_column_grid(bw, bh, floors, floor_h):
 # ── Render Endpoints ──
 
 @router.post("/api/render/generate")
-async def generate_room_render(req: RenderRequest):
+async def generate_room_render(req: RenderRequest, request: Request):
     """Fotogerçekçi oda render'ı üret (Grok Imagine)."""
-    api_key = req.grok_api_key or os.getenv("XAI_API_KEY", "")
+    api_key = (
+        request.headers.get("X-Grok-Api-Key", "").strip()
+        or req.grok_api_key
+        or os.getenv("XAI_API_KEY", "")
+    )
     result = generate_render(
         room_name=req.room_name,
         room_type=req.room_type,
@@ -257,9 +261,13 @@ async def generate_room_render(req: RenderRequest):
 
 
 @router.post("/api/render/exterior")
-async def generate_exterior(req: ExteriorRenderRequest):
+async def generate_exterior(req: ExteriorRenderRequest, request: Request):
     """Dış cephe render'ı üret."""
-    api_key = req.grok_api_key or os.getenv("XAI_API_KEY", "")
+    api_key = (
+        request.headers.get("X-Grok-Api-Key", "").strip()
+        or req.grok_api_key
+        or os.getenv("XAI_API_KEY", "")
+    )
     result = generate_exterior_render(
         building_floors=req.kat_adedi,
         building_style=req.style,
