@@ -5,10 +5,15 @@ TKGM API Entegrasyonu — Parsel sorgulama ve koordinat çekme.
 - pyproj ile doğru WGS84→UTM koordinat dönüşümü
 - API endpoint validasyonu
 - Daha güvenilir hata yönetimi
+- File-based cache (Railway overseas sunucu → TKGM yavaş/timeout)
 """
 
 import math
+import json
+import hashlib
 import logging
+import os
+import time
 import requests
 from dataclasses import dataclass, field
 from shapely.geometry import Polygon, shape
@@ -29,6 +34,46 @@ TKGM_HEADERS = {
     "Origin": "https://parselsorgu.tkgm.gov.tr",
     "Connection": "keep-alive",
 }
+
+# ── Cache ──
+CACHE_DIR = "/tmp/tkgm-cache"
+CACHE_TTL = 86400 * 7  # 7 gün (parsel verisi sık değişmez)
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+
+def _cache_key(il: str, ilce: str, ada: str, parsel: str) -> str:
+    """Cache dosya adı üretir."""
+    raw = f"{il}_{ilce}_{ada}_{parsel}".lower()
+    return hashlib.md5(raw.encode()).hexdigest()
+
+
+def _cache_get(key: str) -> dict | None:
+    """Cache'den oku. TTL aşıldıysa None."""
+    path = os.path.join(CACHE_DIR, f"{key}.json")
+    try:
+        if os.path.exists(path):
+            mtime = os.path.getmtime(path)
+            if time.time() - mtime < CACHE_TTL:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                logger.info(f"TKGM cache hit: {key}")
+                return data
+            else:
+                os.remove(path)  # TTL expired
+    except Exception as e:
+        logger.debug(f"Cache read error: {e}")
+    return None
+
+
+def _cache_set(key: str, data: dict) -> None:
+    """Cache'e yaz."""
+    path = os.path.join(CACHE_DIR, f"{key}.json")
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        logger.info(f"TKGM cache write: {key}")
+    except Exception as e:
+        logger.debug(f"Cache write error: {e}")
 
 
 @dataclass
@@ -58,9 +103,24 @@ def parsel_sorgula(
     ada: str = "",
     parsel: str = "",
 ) -> TKGMParselSonuc:
-    """TKGM API üzerinden parsel bilgisi sorgular."""
+    """TKGM API üzerinden parsel bilgisi sorgular. Cache destekli."""
     sonuc = TKGMParselSonuc(il=il, ilce=ilce, mahalle=mahalle,
                              ada=ada, parsel=parsel)
+
+    # ── Cache kontrolü ──
+    ckey = _cache_key(il, ilce, ada, parsel)
+    cached = _cache_get(ckey)
+    if cached:
+        sonuc.basarili = True
+        sonuc.alan = cached.get("alan", 0)
+        sonuc.pafta = cached.get("pafta", "")
+        sonuc.nitelik = cached.get("nitelik", "")
+        coords = cached.get("koordinatlar", [])
+        if coords:
+            sonuc.koordinatlar = [tuple(c) for c in coords]
+            sonuc.polygon = _coords_to_polygon_pyproj(sonuc.koordinatlar)
+        logger.info(f"TKGM cache'den: {ada}/{parsel} — {sonuc.alan:.1f} m2")
+        return sonuc
 
     # Yöntem 1: CBS API
     try:
@@ -80,6 +140,13 @@ def parsel_sorgula(
                     sonuc.polygon = _coords_to_polygon_pyproj(coords)
                     if sonuc.alan == 0 and sonuc.polygon:
                         sonuc.alan = sonuc.polygon.area
+
+            # ── Cache'e yaz ──
+            _cache_set(ckey, {
+                "alan": sonuc.alan, "pafta": sonuc.pafta,
+                "nitelik": sonuc.nitelik,
+                "koordinatlar": [list(c) for c in sonuc.koordinatlar],
+            })
 
             logger.info(f"TKGM sorgu basarili: {ada}/{parsel} — "
                         f"{sonuc.alan:.1f} m2")
