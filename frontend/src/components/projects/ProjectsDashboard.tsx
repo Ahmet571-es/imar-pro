@@ -5,9 +5,10 @@ import { useProjectStore } from '@/stores/projectStore'
 import type { WizardStep } from '@/types'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { toast } from '@/stores/toastStore'
+import { ProjectComparison } from './ProjectComparison'
 import {
   Plus, FolderOpen, Trash2, Clock, MapPin, Loader2, Building2, LogOut, User,
-  Settings, CheckCircle2, Layers,
+  Settings, CheckCircle2, Layers, GitCompare,
 } from 'lucide-react'
 
 interface Props {
@@ -37,6 +38,7 @@ export function ProjectsDashboard({ onOpenProject }: Props) {
   const { openSettings } = useSettingsStore()
   const [newName, setNewName] = useState('')
   const [showNew, setShowNew] = useState(false)
+  const [showComparison, setShowComparison] = useState(false)
 
   useEffect(() => {
     if (user) fetchProjects(user.id)
@@ -158,7 +160,20 @@ export function ProjectsDashboard({ onOpenProject }: Props) {
             className="btn-primary flex items-center gap-2">
             <Plus className="w-4 h-4" /> Yeni Proje
           </button>
+          {projects.length >= 2 && (
+            <button onClick={() => setShowComparison(true)}
+              className="btn-secondary flex items-center gap-2">
+              <GitCompare className="w-4 h-4" /> Karşılaştır
+            </button>
+          )}
         </div>
+
+        {/* Project Comparison Modal */}
+        {showComparison && (
+          <div className="mb-6">
+            <ProjectComparison onClose={() => setShowComparison(false)} />
+          </div>
+        )}
 
         {/* New project modal-like */}
         {showNew && (

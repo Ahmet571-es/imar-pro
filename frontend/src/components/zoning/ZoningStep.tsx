@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
 import { toast } from '@/stores/toastStore'
 import { ParcelSVG } from '@/components/parcel/ParcelSVG'
+import { ImarPDFUpload } from './ImarPDFUpload'
 import { calculateZoning } from '@/services/api'
 import { formatNumber } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -123,6 +124,14 @@ export function ZoningStep() {
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-text">İmar Parametreleri</h2>
         <p className="text-text-muted text-sm mt-1">TAKS, KAKS, çekme mesafeleri ve kat bilgilerini girin</p>
+      </div>
+
+      {/* İmar PDF Upload — otomatik parametre çıkarma */}
+      <div className="mb-6">
+        <ImarPDFUpload onApplyParams={() => {
+          // Trigger recalculation after PDF params applied
+          setTimeout(() => doCalculate(), 500)
+        }} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">

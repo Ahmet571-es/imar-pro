@@ -7,6 +7,7 @@ import { EarthquakePanel } from './EarthquakePanel'
 import { EnergyPanel } from './EnergyPanel'
 import { ApartmentMixEditor, type ApartmentMixSummary } from './ApartmentMixEditor'
 import { InvestmentDecisionPanel } from './InvestmentDecisionPanel'
+import { DOPPanel } from './DOPPanel'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   AreaChart, Area, Cell, LineChart, Line, Legend, ReferenceLine,
@@ -570,6 +571,16 @@ export function FeasibilityStep() {
           <EnergyPanel
             toplamAlan={hesaplama.toplam_insaat_alani}
             katSayisi={imarParams.kat_adedi}
+          />
+        </div>
+      )}
+
+      {/* DOP Panel */}
+      {data && parselData && (
+        <div className="mt-6">
+          <DOPPanel
+            arsaAlani={parselData.alan_m2}
+            arsaBirimFiyat={Math.round(feasibilityFormState.arsaMaliyeti / parselData.alan_m2) || 15000}
           />
         </div>
       )}

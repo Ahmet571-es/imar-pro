@@ -20,6 +20,7 @@ from routers.threed_router import router as threed_router
 from routers.feasibility_router import router as feasibility_router
 from routers.analysis_router import router as analysis_router
 from routers.export_router import router as export_router
+from routers.level6_router import router as level6_router
 
 app = FastAPI(
     title="imarPRO API",
@@ -62,6 +63,7 @@ app.include_router(threed_router)
 app.include_router(feasibility_router)
 app.include_router(analysis_router)
 app.include_router(export_router)
+app.include_router(level6_router)
 
 
 @app.on_event("startup")

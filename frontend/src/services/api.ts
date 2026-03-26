@@ -178,3 +178,53 @@ export async function generateAICommentary(params: Record<string, unknown>) {
     body: JSON.stringify(params),
   })
 }
+
+// ── Level 6: Çoklu Kat ──
+
+export async function generateMultiFloorPlan(params: Record<string, unknown>) {
+  return request('/api/plan/multi-floor', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+// ── Level 6: DOP ──
+
+export async function calculateDOP(params: Record<string, unknown>) {
+  return request('/api/feasibility/dop', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+// ── Level 6: İmar PDF Okuma ──
+
+export async function parseImarPDF(file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const apiBase = import.meta.env.VITE_API_URL || ''
+  const headers: Record<string, string> = {}
+  const { claudeApiKey } = useSettingsStore.getState()
+  if (claudeApiKey) headers['X-Claude-Api-Key'] = claudeApiKey
+
+  const res = await fetch(`${apiBase}/api/imar/parse-pdf`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  })
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(error.detail || `PDF okuma hatası (HTTP ${res.status})`)
+  }
+  return res.json()
+}
+
+// ── Level 6: Proje Karşılaştırma ──
+
+export async function compareProjects(projects: Record<string, unknown>[]) {
+  return request('/api/projects/compare', {
+    method: 'POST',
+    body: JSON.stringify({ projects }),
+  })
+}
