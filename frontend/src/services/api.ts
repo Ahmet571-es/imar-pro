@@ -1,19 +1,43 @@
 import { useSettingsStore } from '@/stores/settingsStore'
+import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
-function getApiHeaders(): Record<string, string> {
+async function getApiHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   const { claudeApiKey, grokApiKey } = useSettingsStore.getState()
   if (claudeApiKey) headers['X-Claude-Api-Key'] = claudeApiKey
   if (grokApiKey) headers['X-Grok-Api-Key'] = grokApiKey
+
+  // Supabase auth token — backend JWT doğrulaması için
+  if (isSupabaseConfigured) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      }
+    } catch { /* sessiz */ }
+  }
+
+  // Demo mod — localStorage'dan user ID
+  if (!headers['Authorization']) {
+    const guest = localStorage.getItem('imar-pro-guest')
+    if (guest) {
+      try {
+        const user = JSON.parse(guest)
+        if (user?.id) headers['X-Demo-User-Id'] = user.id
+      } catch { /* sessiz */ }
+    }
+  }
+
   return headers
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   try {
+    const headers = await getApiHeaders()
     const res = await fetch(`${API_BASE}${path}`, {
-      headers: getApiHeaders(),
+      headers,
       ...options,
     })
     if (!res.ok) {
@@ -154,9 +178,10 @@ export function getExportSVGUrl() {
 }
 
 export async function downloadPDFReport(params: Record<string, unknown>) {
+  const headers = await getApiHeaders()
   const res = await fetch(`${API_BASE}/api/export/pdf`, {
     method: 'POST',
-    headers: getApiHeaders(),
+    headers,
     body: JSON.stringify(params),
   })
   if (!res.ok) {
@@ -204,13 +229,13 @@ export async function parseImarPDF(file: File) {
   formData.append('file', file)
 
   const apiBase = import.meta.env.VITE_API_URL || ''
-  const headers: Record<string, string> = {}
-  const { claudeApiKey } = useSettingsStore.getState()
-  if (claudeApiKey) headers['X-Claude-Api-Key'] = claudeApiKey
+  const allHeaders = await getApiHeaders()
+  // FormData — Content-Type otomatik ayarlanmalı
+  delete allHeaders['Content-Type']
 
   const res = await fetch(`${apiBase}/api/imar/parse-pdf`, {
     method: 'POST',
-    headers,
+    headers: allHeaders,
     body: formData,
   })
   if (!res.ok) {
@@ -267,9 +292,10 @@ export async function getMEPSchematic(params: Record<string, unknown>) {
 }
 
 export async function downloadIFC(params: Record<string, unknown>) {
+  const headers = await getApiHeaders()
   const res = await fetch(`${API_BASE}/api/bim/export/ifc`, {
     method: 'POST',
-    headers: getApiHeaders(),
+    headers,
     body: JSON.stringify(params),
   })
   if (!res.ok) throw new Error(`IFC export hatası (HTTP ${res.status})`)

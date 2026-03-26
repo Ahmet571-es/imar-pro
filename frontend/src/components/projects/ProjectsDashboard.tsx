@@ -129,7 +129,7 @@ export function ProjectsDashboard({ onOpenProject, onOpenAdmin }: Props) {
               <p className="text-xs text-white/50">Projelerim</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 flex-wrap">
             <button
               onClick={openSettings}
               className="p-2 hover:bg-white/10 rounded-lg transition-colors"
@@ -147,10 +147,12 @@ export function ProjectsDashboard({ onOpenProject, onOpenAdmin }: Props) {
               </button>
             )}
             <NotificationBell demoUserId={user?.id} />
-            <UsageIndicator demoUserId={user?.id} />
-            <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-1.5">
+            <div className="hidden sm:block">
+              <UsageIndicator demoUserId={user?.id} />
+            </div>
+            <div className="hidden md:flex items-center gap-2 bg-white/10 rounded-lg px-3 py-1.5">
               <User className="w-4 h-4 text-white/60" />
-              <span className="text-sm">{user?.name || user?.email}</span>
+              <span className="text-sm max-w-[120px] truncate">{user?.name || user?.email}</span>
               {isDemo && (
                 <span className="text-[9px] bg-accent/30 text-accent px-1.5 py-0.5 rounded-full">Demo</span>
               )}

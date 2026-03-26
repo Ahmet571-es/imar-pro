@@ -10,13 +10,15 @@ export function AuthPage() {
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [showPw, setShowPw] = useState(false)
+  const [signupSuccess, setSignupSuccess] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (mode === 'login') {
       await signIn(email, password)
     } else {
-      await signUp(email, password, name)
+      const success = await signUp(email, password, name)
+      if (success) setSignupSuccess(true)
     }
   }
 
@@ -81,7 +83,18 @@ export function AuthPage() {
 
             {isDemo && (
               <div className="bg-accent/10 border border-accent/30 rounded-lg px-3 py-2 text-xs text-text-muted mb-4">
-                Demo mod — Supabase yapılandırılmamış. Giriş bilgileri yerel olarak saklanır.
+                ℹ️ Demo mod aktif. Gerçek hesap için Supabase yapılandırılmalıdır.
+              </div>
+            )}
+
+            {signupSuccess && !isDemo && (
+              <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-3 text-sm text-green-800 mb-4">
+                ✅ <strong>Kayıt başarılı!</strong> E-posta adresinize onay linki gönderildi.
+                Onayladıktan sonra giriş yapabilirsiniz.
+                <button onClick={() => { setSignupSuccess(false); setMode('login') }}
+                  className="block mt-2 text-green-700 font-semibold hover:underline">
+                  → Giriş sayfasına dön
+                </button>
               </div>
             )}
 

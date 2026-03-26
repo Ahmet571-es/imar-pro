@@ -329,9 +329,9 @@ export function ThreeDStep() {
 
       {/* 3D Tab */}
       {activeTab === '3d' && (
-        <div className="flex gap-4">
+        <div className="flex flex-col lg:flex-row gap-4">
           {/* 3D Viewer */}
-          <div className="flex-1 bg-white rounded-xl border border-border overflow-hidden" style={{ height: 620 }}>
+          <div className="flex-1 bg-white rounded-xl border border-border overflow-hidden" style={{ minHeight: 400, height: 'clamp(400px, 60vh, 620px)' }}>
           {loading && (
             <div className="h-full flex items-center justify-center">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -356,7 +356,7 @@ export function ThreeDStep() {
           </div>
           {/* Discipline Toggle Sidebar */}
           {buildingData && (
-            <div className="w-72 flex-shrink-0 space-y-3">
+            <div className="w-full lg:w-72 flex-shrink-0 space-y-3">
               <DisciplineToggle
                 rooms={planRooms.map(r => ({
                   name: r.name, type: r.type,
