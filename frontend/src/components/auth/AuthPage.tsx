@@ -150,7 +150,7 @@ export function AuthPage() {
           </div>
 
           <p className="text-center text-xs text-white/40 mt-6">
-            © 2025 imarPRO — Üniversite İnşaat Mühendisliği Projesi
+            © {new Date().getFullYear()} imarPRO — Gayrimenkul Fizibilite Platformu
           </p>
         </div>
       </div>

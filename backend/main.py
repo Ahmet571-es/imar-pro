@@ -24,19 +24,29 @@ from routers.export_router import router as export_router
 app = FastAPI(
     title="imarPRO API",
     description="İmar Uyumlu Kat Planı Üretici — Profesyonel Gayrimenkul Fizibilite Platformu",
-    version="1.0.0",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
-# CORS — Vercel frontend + local dev
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("imarpro")
+
+# CORS — Vercel frontend + local dev + custom domain
+_cors_origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:4173",
+]
+# Add custom origin from env (e.g. https://imarpro.com)
+_custom_origin = os.getenv("CORS_ORIGIN", "")
+if _custom_origin:
+    _cors_origins.append(_custom_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://localhost:4173",
-    ],
+    allow_origins=_cors_origins,
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
@@ -54,11 +64,23 @@ app.include_router(analysis_router)
 app.include_router(export_router)
 
 
+@app.on_event("startup")
+async def startup():
+    from export.pdf_report import FONT_NAME
+    from config.afad_ss_s1 import AFAD_81_IL
+    logger.info("═══ imarPRO API v2.0.0 Başlatıldı ═══")
+    logger.info(f"  PDF Font: {FONT_NAME}")
+    logger.info(f"  AFAD İller: {len(AFAD_81_IL)}")
+    logger.info(f"  Claude Key: {'✓' if os.getenv('ANTHROPIC_API_KEY') else '✗ (header/body gerekli)'}")
+    logger.info(f"  Grok Key: {'✓' if os.getenv('XAI_API_KEY') else '✗ (header/body gerekli)'}")
+    logger.info(f"  CORS Custom: {os.getenv('CORS_ORIGIN', '(yok)')}")
+
+
 @app.get("/")
 async def root():
     return {
         "name": "imarPRO API",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "status": "active",
         "docs": "/docs",
     }
@@ -67,15 +89,17 @@ async def root():
 @app.get("/health")
 async def health():
     """Detaylı sağlık kontrolü — deploy monitoring için."""
-    import sys
+    import sys as _sys
     from export.pdf_report import FONT_NAME
     from config.afad_ss_s1 import AFAD_81_IL
 
     return {
         "status": "ok",
-        "python": sys.version.split()[0],
+        "version": "2.0.0",
+        "python": _sys.version.split()[0],
         "services": {
             "pdf_font": FONT_NAME,
             "afad_iller": len(AFAD_81_IL),
+            "cors_custom": os.getenv("CORS_ORIGIN", ""),
         },
     }

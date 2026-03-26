@@ -30,7 +30,8 @@ export const useProjectListStore = create<ProjectListState>((set, get) => ({
     if (!isSupabaseConfigured) {
       const raw = localStorage.getItem('imar-pro-projects')
       const all: SavedProject[] = raw ? JSON.parse(raw) : []
-      set({ projects: all.filter((p) => p.data?.userId === userId), loadingProjects: false })
+      // Demo mode: show all local projects (no user isolation needed)
+      set({ projects: all, loadingProjects: false })
       return
     }
 
