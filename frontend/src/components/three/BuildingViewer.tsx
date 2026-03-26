@@ -1,429 +1,623 @@
-import { useRef, useState, useMemo, useCallback } from 'react'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { OrbitControls, Html, Environment, ContactShadows } from '@react-three/drei'
+/**
+ * imarPRO — BuildingViewer.tsx (Complete Rewrite)
+ * Seviye 3 BIM Viewer: 3D/4D/5D, 6 görünüm modu,
+ * PBR materyaller, post-processing, kamera preset,
+ * interaktivite, export.
+ */
+
+import { useRef, useState, useMemo, useCallback, Suspense, useEffect } from 'react'
+import { Canvas } from '@react-three/fiber'
 import * as THREE from 'three'
 
-// ── Types ──
-interface Vec3 { x: number; y: number; z: number }
-interface Size2 { width: number; height: number }
-interface Size3 { width: number; height: number; depth: number }
+import type {
+  Floor3D, Room3D, ColumnData, BuildingInfo, ViewMode,
+  CameraPreset, Vec3, CostElementData,
+} from './types3d'
+import {
+  CONSTRUCTION_PHASES, COST_CATEGORIES,
+} from './types3d'
 
-interface RoomData {
-  name: string
-  type: string
-  position: Vec3
-  dimensions: Size3
-  is_exterior: boolean
-  facing: string
-  walls: { side: string; center: Vec3; size: Size3; is_exterior: boolean }[]
-  windows: { center: Vec3; size: Size2; facing: string }[]
-  door: { center: Vec3; size: Size2 } | null
-}
+import {
+  Wall, WindowMesh, DoorMesh, FloorSlab, Column,
+  Roof, Foundation, EntranceSteps, SectionPlane,
+  get4DOpacity, getCostHeatmapColor,
+} from './BuildingGeometry'
 
-interface FloorData {
-  floor_index: number
-  floor_y: number
-  rooms: RoomData[]
-  slab: { y: number; thickness: number; width: number; depth: number }
-}
+import { usePBRMaterials } from './PBRMaterials'
+import { EnvironmentScene } from './Environment3D'
+import { CameraController, generateCameraPresets } from './CameraSystem'
+import { PostProcessingEffects } from './PostProcessing3D'
+import { ExportActions, type ExportActionsRef } from './ExportTools'
+import { RoomTooltip, InteractiveRoom, MeasurementLine, RoomDetailPanel, type RoomDetailData } from './RoomInteraction'
+import type { MaterialDef } from './types3d'
 
-interface ColumnData {
-  id: number; x: number; z: number; size: number; height: number; label: string
-}
+// ── View Mode Buttons ──
+const VIEW_MODES: { id: ViewMode; label: string; icon: string }[] = [
+  { id: 'solid', label: 'Solid', icon: '🧊' },
+  { id: 'xray', label: 'X-Ray', icon: '🔍' },
+  { id: 'wireframe', label: 'Wireframe', icon: '🔲' },
+  { id: 'section', label: 'Kesit', icon: '✂️' },
+  { id: 'exploded', label: 'Patlatılmış', icon: '💥' },
+  { id: 'thermal', label: 'Termal', icon: '🌡️' },
+]
 
-interface BuildingInfo {
-  total_height: number; width: number; depth: number
-  floor_height: number; floor_count: number
-}
+// ── Building Scene (inside Canvas) ──
 
-interface MaterialDef {
-  color: string; roughness?: number; opacity?: number; name: string
-}
-
-interface BuildingViewerProps {
-  floors: FloorData[]
+interface SceneProps {
+  floors: Floor3D[]
   columns: ColumnData[]
   building: BuildingInfo
-  materials: Record<string, MaterialDef>
-}
-
-// ── Room Colors ──
-const ROOM_FLOOR_COLORS: Record<string, string> = {
-  salon: '#E3F2FD', yatak_odasi: '#F3E5F5', mutfak: '#FFF3E0',
-  banyo: '#E0F2F1', wc: '#E0F2F1', antre: '#FFF8E1',
-  koridor: '#ECEFF1', balkon: '#C8E6C9',
-}
-
-// ── Sun Position ──
-function getSunPosition(hour: number, lat: number = 39.9): [number, number, number] {
-  const dayAngle = ((hour - 6) / 12) * Math.PI
-  const altitude = Math.sin(dayAngle) * (90 - Math.abs(lat - 23.5)) * (Math.PI / 180)
-  const azimuth = dayAngle - Math.PI / 2
-  const r = 50
-  return [
-    r * Math.cos(altitude) * Math.sin(azimuth),
-    r * Math.sin(altitude) + 10,
-    r * Math.cos(altitude) * Math.cos(azimuth),
-  ]
-}
-
-// ── Room Box ──
-function RoomBox({ room, floorY, opacity, xray, onHover, onUnhover }: {
-  room: RoomData; floorY: number; opacity: number
-  xray: boolean; onHover: (name: string) => void; onUnhover: () => void
-}) {
-  const meshRef = useRef<THREE.Mesh>(null)
-  const [hovered, setHovered] = useState(false)
-  const floorColor = ROOM_FLOOR_COLORS[room.type] || '#F5F5F5'
-
-  const handlePointerOver = useCallback(() => {
-    setHovered(true)
-    onHover(room.name)
-  }, [room.name, onHover])
-
-  const handlePointerOut = useCallback(() => {
-    setHovered(false)
-    onUnhover()
-  }, [onUnhover])
-
-  return (
-    <group>
-      {/* Floor slab per room */}
-      <mesh position={[room.position.x, floorY + 0.01, room.position.z]}
-        onPointerOver={handlePointerOver} onPointerOut={handlePointerOut}>
-        <boxGeometry args={[room.dimensions.width, 0.02, room.dimensions.depth]} />
-        <meshStandardMaterial color={hovered ? '#90CAF9' : floorColor} roughness={0.6} />
-      </mesh>
-
-      {/* Walls */}
-      {room.walls.map((wall, wi) => (
-        <mesh key={wi} position={[wall.center.x, wall.center.y, wall.center.z]}>
-          <boxGeometry args={[wall.size.width, wall.size.height, wall.size.depth]} />
-          <meshStandardMaterial
-            color={wall.is_exterior ? '#E8E0D4' : '#F5F0EB'}
-            roughness={0.85}
-            transparent={xray || opacity < 1}
-            opacity={xray ? 0.15 : opacity}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
-      ))}
-
-      {/* Windows */}
-      {room.windows.map((win, wi) => {
-        const isNS = win.facing === 'north' || win.facing === 'south'
-        return (
-          <group key={`win-${wi}`}>
-            {/* Glass */}
-            <mesh position={[win.center.x, win.center.y, win.center.z]}>
-              <boxGeometry args={isNS
-                ? [win.size.width, win.size.height, 0.02]
-                : [0.02, win.size.height, win.size.width]
-              } />
-              <meshPhysicalMaterial
-                color="#87CEEB" transparent opacity={0.3}
-                roughness={0.05} metalness={0.1}
-                transmission={0.6} thickness={0.01}
-              />
-            </mesh>
-            {/* Frame */}
-            <mesh position={[win.center.x, win.center.y, win.center.z]}>
-              <boxGeometry args={isNS
-                ? [win.size.width + 0.08, win.size.height + 0.08, 0.04]
-                : [0.04, win.size.height + 0.08, win.size.width + 0.08]
-              } />
-              <meshStandardMaterial color="#555555" roughness={0.4} />
-            </mesh>
-          </group>
-        )
-      })}
-
-      {/* Door */}
-      {room.door && (
-        <mesh position={[room.door.center.x, room.door.center.y, room.door.center.z]}>
-          <boxGeometry args={[room.door.size.width, room.door.size.height, 0.06]} />
-          <meshStandardMaterial color="#8B6914" roughness={0.6} />
-        </mesh>
-      )}
-
-      {/* Room label (HTML overlay) */}
-      {hovered && (
-        <Html position={[room.position.x, room.position.y + room.dimensions.height / 2 + 0.5, room.position.z]}
-          center distanceFactor={15} style={{ pointerEvents: 'none' }}>
-          <div className="bg-white/95 px-3 py-1.5 rounded-lg shadow-lg border text-xs whitespace-nowrap">
-            <div className="font-bold text-primary">{room.name}</div>
-            <div className="text-text-muted">
-              {room.dimensions.width.toFixed(1)}×{room.dimensions.depth.toFixed(1)}m
-              = {(room.dimensions.width * room.dimensions.depth).toFixed(1)}m²
-            </div>
-          </div>
-        </Html>
-      )}
-    </group>
-  )
-}
-
-// ── Floor Slab ──
-function FloorSlab({ y, width, depth, thickness }: {
-  y: number; width: number; depth: number; thickness: number
-}) {
-  return (
-    <mesh position={[width / 2, y - thickness / 2, depth / 2]}>
-      <boxGeometry args={[width + 0.5, thickness, depth + 0.5]} />
-      <meshStandardMaterial color="#D4C9B8" roughness={0.7} />
-    </mesh>
-  )
-}
-
-// ── Column ──
-function Column({ col, opacity }: { col: ColumnData; opacity: number }) {
-  return (
-    <mesh position={[col.x, col.height / 2, col.z]}>
-      <boxGeometry args={[col.size, col.height, col.size]} />
-      <meshStandardMaterial
-        color="#B0B0B0" roughness={0.8}
-        transparent={opacity < 1} opacity={opacity}
-      />
-    </mesh>
-  )
-}
-
-// ── Sun Light ──
-function SunLight({ hour }: { hour: number }) {
-  const [x, y, z] = getSunPosition(hour)
-  return (
-    <directionalLight
-      position={[x, y, z]}
-      intensity={1.2}
-      castShadow
-      shadow-mapSize-width={2048}
-      shadow-mapSize-height={2048}
-      shadow-camera-far={100}
-      shadow-camera-left={-30}
-      shadow-camera-right={30}
-      shadow-camera-top={30}
-      shadow-camera-bottom={-30}
-    />
-  )
-}
-
-// ── Section Cut Plane ──
-function SectionPlane({ height, width, depth }: { height: number; width: number; depth: number }) {
-  return (
-    <mesh position={[width / 2, height, depth / 2]} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[width + 4, depth + 4]} />
-      <meshBasicMaterial color="#dc2626" transparent opacity={0.08} side={THREE.DoubleSide} />
-    </mesh>
-  )
-}
-
-// ── Main Scene ──
-function Scene({ floors, columns, building, viewFloor, xray, showColumns, sectionHeight, sunHour, exploded }: {
-  floors: FloorData[]
-  columns: ColumnData[]
-  building: BuildingInfo
-  viewFloor: number // -1 = all
-  xray: boolean
-  showColumns: boolean
-  sectionHeight: number | null
+  viewMode: ViewMode
+  selectedFloor: number
+  sectionHeight: number
+  sectionVerticalPos: number
   sunHour: number
   exploded: boolean
-}) {
-  const [, setHoveredRoom] = useState<string | null>(null)
+  showColumns: boolean
+  showPostProcessing: boolean
+  constructionMonth: number
+  show4D: boolean
+  showCostHeatmap: boolean
+  totalCost: number
+  hoveredRoom: string | null
+  selectedRoom: string | null
+  measureMode: boolean
+  measurePoints: Vec3[]
+  onHoverRoom: (name: string | null) => void
+  onClickRoom: (room: Room3D) => void
+  onDoubleClickRoom: (room: Room3D) => void
+  onMeasureClick: (point: Vec3) => void
+  targetPreset: CameraPreset | null
+  flyToTarget: { position: Vec3; dimensions: { width: number; height: number; depth: number } } | null
+  onFlyToComplete: () => void
+  exportRef: React.RefObject<ExportActionsRef | null>
+}
 
-  const explodeOffset = exploded ? 1.5 : 0
+function BuildingScene({
+  floors, columns, building, viewMode,
+  selectedFloor, sectionHeight, sectionVerticalPos, sunHour,
+  exploded, showColumns, showPostProcessing,
+  constructionMonth, show4D,
+  showCostHeatmap, totalCost,
+  hoveredRoom, selectedRoom, measureMode, measurePoints,
+  onHoverRoom, onClickRoom, onDoubleClickRoom, onMeasureClick,
+  targetPreset, flyToTarget, onFlyToComplete,
+  exportRef,
+}: SceneProps) {
+  const materials = usePBRMaterials()
+  const explodeOffset = exploded ? 2.0 : 0
+  const costPerFloor = totalCost > 0 ? totalCost / building.floor_count : 0
+
+  const maxElementCost = useMemo(() => {
+    if (!showCostHeatmap || totalCost <= 0) return 1
+    return costPerFloor * 0.5
+  }, [showCostHeatmap, totalCost, costPerFloor])
 
   return (
     <>
-      <ambientLight intensity={0.4} />
-      <SunLight hour={sunHour} />
+      <EnvironmentScene building={building} sunHour={sunHour} viewMode={viewMode} />
 
-      {/* Ground plane */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[building.width / 2, -0.05, building.depth / 2]} receiveShadow>
-        <planeGeometry args={[building.width + 20, building.depth + 20]} />
-        <meshStandardMaterial color="#E8E5DE" roughness={1} />
-      </mesh>
+      <CameraController
+        building={building}
+        targetPreset={targetPreset}
+        flyToTarget={flyToTarget}
+        onFlyToComplete={onFlyToComplete}
+        enabled={!measureMode}
+      />
+
+      <PostProcessingEffects enabled={showPostProcessing && viewMode === 'solid'} />
+
+      <ExportActions ref={exportRef} />
+
+      <Foundation building={building} viewMode={viewMode} />
+      <EntranceSteps building={building} viewMode={viewMode} />
 
       {/* Floors */}
       {floors.map((floor) => {
-        const visible = viewFloor === -1 || viewFloor === floor.floor_index
-        const belowSection = sectionHeight === null || floor.floor_y < sectionHeight
+        const visible = selectedFloor === -1 || selectedFloor === floor.floor_index
+        const belowSection = viewMode !== 'section' || floor.floor_y < sectionHeight
         if (!visible || !belowSection) return null
 
         const yOffset = exploded ? floor.floor_index * explodeOffset : 0
-        const opacity = viewFloor === -1 ? 1 : (floor.floor_index === viewFloor ? 1 : 0.15)
+        const opacity = selectedFloor === -1 ? 1 : (floor.floor_index === selectedFloor ? 1 : 0.12)
+
+        const floorBuilt4D = !show4D || constructionMonth >= (2 + floor.floor_index * 1.5)
+        const slab4DOpacity = show4D ? get4DOpacity('slab', floor.floor_index, building.floor_count, constructionMonth) : { opacity: 1 }
+
+        const slabCost = costPerFloor * (COST_CATEGORIES.betonarme.percent * 0.6)
+        const slabHeatmapColor = showCostHeatmap ? getCostHeatmapColor(slabCost, maxElementCost) : undefined
 
         return (
           <group key={floor.floor_index} position={[0, yOffset, 0]}>
-            {/* Floor slab */}
-            <FloorSlab
-              y={floor.slab.y}
-              width={floor.slab.width}
-              depth={floor.slab.depth}
-              thickness={floor.slab.thickness}
-            />
-
-            {/* Rooms */}
-            {floor.rooms.map((room, ri) => (
-              <RoomBox
-                key={ri}
-                room={room}
-                floorY={floor.floor_y}
-                opacity={opacity}
-                xray={xray}
-                onHover={setHoveredRoom}
-                onUnhover={() => setHoveredRoom(null)}
+            {floorBuilt4D && (
+              <FloorSlab
+                y={floor.slab.y}
+                width={floor.slab.width}
+                depth={floor.slab.depth}
+                thickness={floor.slab.thickness}
+                viewMode={viewMode}
+                material={materials.slab}
+                isGround={floor.is_ground}
+                costHeatmapColor={show4D ? slab4DOpacity.color : slabHeatmapColor}
               />
-            ))}
+            )}
 
-            {/* Top slab for top floor */}
-            {floor.floor_index === floors.length - 1 && (
+            {floor.rooms.map((room, ri) => {
+              const wallsBuilt = !show4D || constructionMonth >= 8
+              const windowsBuilt = !show4D || constructionMonth >= 10
+              const doorsBuilt = !show4D || constructionMonth >= 13
+
+              const wallMaterial = room.is_exterior ? materials.exteriorWall : materials.interiorWall
+              const isHovered = hoveredRoom === room.name
+              const isSelected = selectedRoom === room.name
+
+              const wallCost = costPerFloor * (room.is_exterior ? COST_CATEGORIES.dis_cephe.percent * 0.5 : COST_CATEGORIES.ince_insaat.percent * 0.15)
+              const wallHeatmapColor = showCostHeatmap ? getCostHeatmapColor(wallCost, maxElementCost) : undefined
+
+              const wall4D = show4D ? get4DOpacity(room.is_exterior ? 'walls_exterior' : 'walls_interior', floor.floor_index, building.floor_count, constructionMonth) : { opacity: 1 }
+
+              const getWindowsForWall = (wallSide: string) =>
+                room.windows.filter(w => w.facing === wallSide || (wallSide === 'south' && !w.facing))
+              const getDoorsForWall = (wallSide: string) =>
+                room.door && wallSide === 'south' ? [room.door] : []
+
+              return (
+                <group key={ri}>
+                  <InteractiveRoom
+                    room={room}
+                    floorY={floor.floor_y}
+                    isHovered={isHovered}
+                    isSelected={isSelected}
+                    viewMode={viewMode}
+                    measureMode={measureMode}
+                    onHover={(name) => onHoverRoom(name)}
+                    onUnhover={() => onHoverRoom(null)}
+                    onClick={() => onClickRoom(room)}
+                    onDoubleClick={() => onDoubleClickRoom(room)}
+                    onMeasureClick={onMeasureClick}
+                  />
+
+                  {wallsBuilt && room.walls.map((wall, wi) => (
+                    <Wall
+                      key={`wall-${wi}`}
+                      wall={wall}
+                      windows={windowsBuilt ? getWindowsForWall(wall.side) : []}
+                      doors={doorsBuilt ? getDoorsForWall(wall.side) : []}
+                      floorY={floor.floor_y}
+                      material={wallMaterial}
+                      viewMode={viewMode}
+                      opacity={show4D ? wall4D.opacity : opacity}
+                      costHeatmapColor={show4D ? wall4D.color : wallHeatmapColor}
+                    />
+                  ))}
+
+                  {windowsBuilt && room.windows.map((win, wi) => (
+                    <WindowMesh
+                      key={`win-${wi}`}
+                      win={win}
+                      glassMaterial={materials.glass}
+                      frameMaterial={materials.windowFrame}
+                      viewMode={viewMode}
+                    />
+                  ))}
+
+                  {doorsBuilt && room.door && (
+                    <DoorMesh
+                      door={room.door}
+                      material={materials.door}
+                      viewMode={viewMode}
+                    />
+                  )}
+
+                  {isHovered && (
+                    <RoomTooltip
+                      room={room}
+                      showCost={showCostHeatmap}
+                      costData={showCostHeatmap ? {
+                        id: room.name,
+                        elementType: 'room_finish',
+                        name: room.name,
+                        description: '',
+                        cost: wallCost + slabCost / floor.rooms.length,
+                        costCategory: 'İnce İnşaat',
+                        costPercent: 0,
+                      } : undefined}
+                    />
+                  )}
+                </group>
+              )
+            })}
+
+            {floor.is_top && floorBuilt4D && (
               <FloorSlab
                 y={floor.floor_y + building.floor_height}
                 width={floor.slab.width}
                 depth={floor.slab.depth}
                 thickness={floor.slab.thickness}
+                viewMode={viewMode}
+                material={materials.slab}
               />
             )}
           </group>
         )
       })}
 
-      {/* Columns */}
       {showColumns && columns.map((col) => (
-        <Column key={col.id} col={col} opacity={xray ? 0.4 : 0.7} />
+        <Column
+          key={col.id}
+          col={col}
+          viewMode={viewMode}
+          opacity={viewMode === 'xray' ? 0.4 : 0.8}
+        />
       ))}
 
-      {/* Section cut plane */}
-      {sectionHeight !== null && (
-        <SectionPlane height={sectionHeight} width={building.width} depth={building.depth} />
+      <Roof
+        building={building}
+        roofType="flat"
+        viewMode={viewMode}
+        visible={selectedFloor === -1 && (!show4D || constructionMonth >= 8)}
+        material={materials.slab}
+      />
+
+      {viewMode === 'section' && (
+        <>
+          <SectionPlane
+            position={[building.width / 2, sectionHeight, building.depth / 2]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            width={building.width}
+            depth={building.depth}
+            visible={true}
+          />
+          <SectionPlane
+            position={[sectionVerticalPos, building.total_height / 2, building.depth / 2]}
+            rotation={[0, Math.PI / 2, 0]}
+            width={building.total_height}
+            depth={building.depth}
+            visible={sectionVerticalPos > 0}
+          />
+        </>
       )}
 
-      <ContactShadows position={[building.width / 2, 0, building.depth / 2]}
-        opacity={0.3} scale={50} blur={2} far={20} />
-
-      <OrbitControls
-        target={[building.width / 2, building.total_height / 3, building.depth / 2]}
-        maxPolarAngle={Math.PI / 2 - 0.05}
-        minDistance={5}
-        maxDistance={80}
-        enableDamping
-        dampingFactor={0.08}
-      />
+      <MeasurementLine points={measurePoints} active={measureMode} />
     </>
   )
 }
 
+// ── Main Viewer Props ──
+
+export interface BuildingViewerProps {
+  floors: Floor3D[]
+  columns: ColumnData[]
+  building: BuildingInfo
+  materials: Record<string, MaterialDef>
+  totalCost?: number
+  cashFlowData?: { ay: number; kumulatif: number }[]
+}
+
 // ── Main Component ──
-export function BuildingViewer({ floors, columns, building, materials }: BuildingViewerProps) {
-  const [viewFloor, setViewFloor] = useState(-1)
-  const [xray, setXray] = useState(false)
+
+export function BuildingViewer({ floors, columns, building, totalCost = 0 }: BuildingViewerProps) {
+  const [viewMode, setViewMode] = useState<ViewMode>('solid')
+  const [selectedFloor, setSelectedFloor] = useState(-1)
   const [showColumns, setShowColumns] = useState(false)
-  const [sectionCut, setSectionCut] = useState(false)
+  const [showPostProcessing, setShowPostProcessing] = useState(true)
   const [sectionHeight, setSectionHeight] = useState(building.total_height / 2)
+  const [sectionVerticalPos, setSectionVerticalPos] = useState(0)
   const [sunHour, setSunHour] = useState(14)
-  const [exploded, setExploded] = useState(false)
+
+  const [hoveredRoom, setHoveredRoom] = useState<string | null>(null)
+  const [selectedRoom, setSelectedRoom] = useState<string | null>(null)
+  const [selectedRoomData, setSelectedRoomData] = useState<RoomDetailData | null>(null)
+  const [measureMode, setMeasureMode] = useState(false)
+  const [measurePoints, setMeasurePoints] = useState<Vec3[]>([])
+
+  const [targetPreset, setTargetPreset] = useState<CameraPreset | null>(null)
+  const [flyToTarget, setFlyToTarget] = useState<{ position: Vec3; dimensions: { width: number; height: number; depth: number } } | null>(null)
+  const cameraPresets = useMemo(() => generateCameraPresets(building), [building])
+
+  const [constructionMonth, setConstructionMonth] = useState(18)
+  const [show4D, setShow4D] = useState(false)
+  const [is4DPlaying, setIs4DPlaying] = useState(false)
+  const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const [showCostHeatmap, setShowCostHeatmap] = useState(false)
+
+  const exportRef = useRef<ExportActionsRef>(null)
+
+  const currentCostDisplay = useMemo(() => {
+    if (!show4D || totalCost <= 0) return totalCost
+    const phase = CONSTRUCTION_PHASES.find(p => constructionMonth >= p.startMonth && constructionMonth <= p.endMonth)
+    return phase ? totalCost * phase.cumulativeCostPercent : totalCost
+  }, [show4D, constructionMonth, totalCost])
+
+  const currentCostPercent = useMemo(() => {
+    if (!show4D || totalCost <= 0) return 100
+    const phase = CONSTRUCTION_PHASES.find(p => constructionMonth >= p.startMonth && constructionMonth <= p.endMonth)
+    return phase ? Math.round(phase.cumulativeCostPercent * 100) : 100
+  }, [show4D, constructionMonth, totalCost])
+
+  const toggle4DPlay = useCallback(() => {
+    if (is4DPlaying) {
+      if (playIntervalRef.current) clearInterval(playIntervalRef.current)
+      setIs4DPlaying(false)
+    } else {
+      setConstructionMonth(1)
+      setIs4DPlaying(true)
+      playIntervalRef.current = setInterval(() => {
+        setConstructionMonth(prev => {
+          if (prev >= 18) {
+            if (playIntervalRef.current) clearInterval(playIntervalRef.current)
+            setIs4DPlaying(false)
+            return 18
+          }
+          return prev + 0.5
+        })
+      }, 800)
+    }
+  }, [is4DPlaying])
+
+  useEffect(() => {
+    return () => { if (playIntervalRef.current) clearInterval(playIntervalRef.current) }
+  }, [])
+
+  const handleClickRoom = useCallback((room: Room3D) => {
+    setSelectedRoom(room.name)
+    const cost = totalCost > 0 ? (totalCost / building.floor_count) * 0.1 : undefined
+    setSelectedRoomData({
+      name: room.name,
+      type: room.type,
+      area: room.dimensions.width * room.dimensions.depth,
+      dimensions: room.dimensions,
+      facing: room.facing,
+      is_exterior: room.is_exterior,
+      floor_index: room.floor_index,
+      cost,
+      costCategory: 'İnce İnşaat',
+    })
+  }, [totalCost, building.floor_count])
+
+  const handleDoubleClickRoom = useCallback((room: Room3D) => {
+    setFlyToTarget({ position: room.position, dimensions: room.dimensions })
+  }, [])
+
+  const handleMeasureClick = useCallback((point: Vec3) => {
+    setMeasurePoints(prev => {
+      if (prev.length >= 2) return [point]
+      return [...prev, point]
+    })
+  }, [])
+
+  const currentPhase = useMemo(() => {
+    return CONSTRUCTION_PHASES.find(p => constructionMonth >= p.startMonth && constructionMonth <= p.endMonth)
+  }, [constructionMonth])
 
   return (
-    <div className="relative w-full h-full min-h-[500px] bg-gradient-to-b from-sky-100 to-sky-50 rounded-xl overflow-hidden">
+    <div className="relative w-full h-full min-h-[500px] rounded-xl overflow-hidden bg-gradient-to-b from-sky-100 to-sky-50">
       <Canvas
         shadows
         camera={{
           position: [building.width * 1.5, building.total_height * 1.2, building.depth * 1.5],
-          fov: 45,
-          near: 0.1,
-          far: 500,
+          fov: 45, near: 0.1, far: 500,
         }}
-        gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.1 }}
+        gl={{
+          antialias: true,
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.1,
+          preserveDrawingBuffer: true,
+        }}
+        onPointerMissed={() => {
+          if (!measureMode) { setSelectedRoom(null); setSelectedRoomData(null) }
+        }}
       >
-        <color attach="background" args={['#E8EFF5']} />
-        <fog attach="fog" args={['#E8EFF5', 60, 120]} />
-
-        <Scene
-          floors={floors}
-          columns={columns}
-          building={building}
-          viewFloor={viewFloor}
-          xray={xray}
-          showColumns={showColumns}
-          sectionHeight={sectionCut ? sectionHeight : null}
-          sunHour={sunHour}
-          exploded={exploded}
-        />
+        <Suspense fallback={null}>
+          <BuildingScene
+            floors={floors} columns={columns} building={building}
+            viewMode={viewMode} selectedFloor={selectedFloor}
+            sectionHeight={sectionHeight} sectionVerticalPos={sectionVerticalPos}
+            sunHour={sunHour} exploded={viewMode === 'exploded'}
+            showColumns={showColumns} showPostProcessing={showPostProcessing}
+            constructionMonth={constructionMonth} show4D={show4D}
+            showCostHeatmap={showCostHeatmap} totalCost={totalCost}
+            hoveredRoom={hoveredRoom} selectedRoom={selectedRoom}
+            measureMode={measureMode} measurePoints={measurePoints}
+            onHoverRoom={setHoveredRoom} onClickRoom={handleClickRoom}
+            onDoubleClickRoom={handleDoubleClickRoom} onMeasureClick={handleMeasureClick}
+            targetPreset={targetPreset} flyToTarget={flyToTarget}
+            onFlyToComplete={() => setFlyToTarget(null)}
+            exportRef={exportRef}
+          />
+        </Suspense>
       </Canvas>
 
-      {/* Controls overlay */}
-      <div className="absolute top-3 left-3 flex flex-col gap-2">
-        {/* Floor slider */}
-        <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-md px-3 py-2 text-xs">
-          <div className="font-semibold text-text mb-1.5">Kat Seçimi</div>
-          <div className="flex flex-col gap-1">
-            <button onClick={() => setViewFloor(-1)}
-              className={`px-2 py-1 rounded text-left ${viewFloor === -1 ? 'bg-primary text-white' : 'hover:bg-surface-alt'}`}>
+      {/* Room Detail Panel */}
+      {selectedRoomData && (
+        <RoomDetailPanel
+          room={selectedRoomData}
+          onClose={() => { setSelectedRoom(null); setSelectedRoomData(null) }}
+          onFlyTo={() => {
+            const room = floors.flatMap(f => f.rooms).find(r => r.name === selectedRoomData.name)
+            if (room) handleDoubleClickRoom(room)
+          }}
+        />
+      )}
+
+      {/* LEFT PANEL */}
+      <div className="absolute top-3 left-3 flex flex-col gap-2 z-10">
+        {/* Floor selector */}
+        <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg px-3 py-2 text-xs">
+          <div className="font-semibold text-text mb-1.5">Kat</div>
+          <div className="flex flex-col gap-0.5 max-h-[180px] overflow-y-auto">
+            <button onClick={() => setSelectedFloor(-1)}
+              className={`px-2 py-1 rounded-lg text-left transition-colors ${selectedFloor === -1 ? 'bg-primary text-white' : 'hover:bg-surface-alt'}`}>
               Tümü
             </button>
             {floors.map((f) => (
-              <button key={f.floor_index} onClick={() => setViewFloor(f.floor_index)}
-                className={`px-2 py-1 rounded text-left ${viewFloor === f.floor_index ? 'bg-primary text-white' : 'hover:bg-surface-alt'}`}>
+              <button key={f.floor_index} onClick={() => setSelectedFloor(f.floor_index)}
+                className={`px-2 py-1 rounded-lg text-left transition-colors ${selectedFloor === f.floor_index ? 'bg-primary text-white' : 'hover:bg-surface-alt'}`}>
                 {f.floor_index === 0 ? 'Zemin' : `Kat ${f.floor_index}`}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* View Mode */}
+        <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg px-3 py-2 text-xs">
+          <div className="font-semibold text-text mb-1.5">Görünüm</div>
+          <div className="grid grid-cols-2 gap-1">
+            {VIEW_MODES.map(m => (
+              <button key={m.id} onClick={() => setViewMode(m.id)}
+                className={`px-2 py-1.5 rounded-lg text-left transition-colors flex items-center gap-1 ${viewMode === m.id ? 'bg-primary text-white' : 'hover:bg-surface-alt'}`}>
+                <span className="text-[10px]">{m.icon}</span> {m.label}
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Right controls */}
-      <div className="absolute top-3 right-3 flex flex-col gap-2">
-        <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-md px-3 py-2 text-xs space-y-2">
-          <div className="font-semibold text-text">Görünüm</div>
+      {/* RIGHT PANEL */}
+      <div className="absolute top-3 right-3 flex flex-col gap-2 z-10 max-h-[calc(100%-80px)] overflow-y-auto">
+        {/* Camera presets */}
+        <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg px-3 py-2 text-xs">
+          <div className="font-semibold text-text mb-1.5">Kamera</div>
+          <div className="flex flex-col gap-0.5">
+            {cameraPresets.map(p => (
+              <button key={p.id} onClick={() => setTargetPreset(p)}
+                className="px-2 py-1 rounded-lg text-left hover:bg-surface-alt transition-colors flex items-center gap-1">
+                <span className="text-[10px]">{p.icon}</span> {p.name}
+              </button>
+            ))}
+          </div>
+        </div>
 
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={xray} onChange={(e) => setXray(e.target.checked)} className="rounded" />
-            X-Ray
-          </label>
-
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={exploded} onChange={(e) => setExploded(e.target.checked)} className="rounded" />
-            Exploded
-          </label>
-
+        {/* Tools */}
+        <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg px-3 py-2 text-xs space-y-1.5">
+          <div className="font-semibold text-text">Araçlar</div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={showColumns} onChange={(e) => setShowColumns(e.target.checked)} className="rounded" />
             Kolon Grid
           </label>
-
           <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={sectionCut} onChange={(e) => setSectionCut(e.target.checked)} className="rounded" />
-            Kesit
+            <input type="checkbox" checked={showPostProcessing} onChange={(e) => setShowPostProcessing(e.target.checked)} className="rounded" />
+            Post-FX
           </label>
-
-          {sectionCut && (
-            <input type="range" min={0} max={building.total_height}
-              step={0.5} value={sectionHeight}
-              onChange={(e) => setSectionHeight(Number(e.target.value))}
-              className="w-full" />
-          )}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={measureMode}
+              onChange={(e) => { setMeasureMode(e.target.checked); if (!e.target.checked) setMeasurePoints([]) }}
+              className="rounded" />
+            📏 Ölçüm
+          </label>
         </div>
 
-        {/* Sun control */}
-        <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-md px-3 py-2 text-xs">
-          <div className="font-semibold text-text mb-1">
-            Güneş: {sunHour}:00
-          </div>
+        {/* Sun */}
+        <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg px-3 py-2 text-xs">
+          <div className="font-semibold text-text mb-1">☀️ {sunHour}:00</div>
           <input type="range" min={6} max={20} step={1} value={sunHour}
             onChange={(e) => setSunHour(Number(e.target.value))}
-            className="w-full" />
-          <div className="flex justify-between text-[10px] text-text-muted mt-0.5">
-            <span>06:00</span>
-            <span>20:00</span>
+            className="w-full accent-amber-500" />
+        </div>
+
+        {/* Section controls */}
+        {viewMode === 'section' && (
+          <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg px-3 py-2 text-xs">
+            <div className="font-semibold text-text mb-1">Yatay Kesit</div>
+            <input type="range" min={0} max={building.total_height}
+              step={0.25} value={sectionHeight}
+              onChange={(e) => setSectionHeight(Number(e.target.value))}
+              className="w-full accent-red-500" />
+            <div className="font-semibold text-text mb-1 mt-2">Dikey Kesit</div>
+            <input type="range" min={0} max={building.width}
+              step={0.25} value={sectionVerticalPos}
+              onChange={(e) => setSectionVerticalPos(Number(e.target.value))}
+              className="w-full accent-red-500" />
           </div>
+        )}
+
+        {/* Export */}
+        <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg px-3 py-2 text-xs space-y-1">
+          <div className="font-semibold text-text">Dışa Aktar</div>
+          <button onClick={() => exportRef.current?.screenshot(2)}
+            className="w-full px-2 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-left">
+            📸 PNG (2×)
+          </button>
+          <button onClick={() => exportRef.current?.screenshot(4)}
+            className="w-full px-2 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-left">
+            📸 PNG (4×)
+          </button>
+          <button onClick={() => exportRef.current?.exportGLTF()}
+            className="w-full px-2 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-left">
+            📦 GLTF (.glb)
+          </button>
         </div>
       </div>
 
-      {/* Info badge */}
-      <div className="absolute bottom-3 left-3 bg-white/80 backdrop-blur-sm rounded-lg px-3 py-1.5 text-[10px] text-text-muted">
-        {building.floor_count} Kat · {building.width.toFixed(0)}×{building.depth.toFixed(0)}m · {building.total_height.toFixed(1)}m yükseklik
+      {/* 4D TIMELINE */}
+      {show4D && (
+        <div className="absolute bottom-14 left-3 right-3 z-10">
+          <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-border/50 p-3">
+            <div className="flex items-center gap-3 mb-2">
+              <button onClick={toggle4DPlay}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${is4DPlaying ? 'bg-red-500 text-white' : 'bg-primary text-white'}`}>
+                {is4DPlaying ? '⏸ Durdur' : '▶️ Oynat'}
+              </button>
+              <div className="text-xs font-semibold text-text">
+                Ay {Math.round(constructionMonth)} / 18
+              </div>
+              {currentPhase && (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded-full" style={{ background: currentPhase.color }} />
+                  <span className="text-xs text-text-muted">{currentPhase.name}</span>
+                </div>
+              )}
+              <div className="flex-1" />
+              {totalCost > 0 && (
+                <div className="text-xs font-bold text-emerald-700">
+                  ₺{(currentCostDisplay / 1_000_000).toFixed(1)}M ({currentCostPercent}%)
+                </div>
+              )}
+            </div>
+            <input type="range" min={1} max={18} step={0.5} value={constructionMonth}
+              onChange={(e) => setConstructionMonth(Number(e.target.value))}
+              className="w-full accent-primary" />
+            <div className="flex flex-wrap gap-2 mt-2">
+              {CONSTRUCTION_PHASES.map(p => (
+                <div key={p.id} className="flex items-center gap-1 text-[10px] text-text-muted">
+                  <div className="w-2.5 h-2.5 rounded-sm" style={{ background: p.color }} />
+                  {p.name}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BOTTOM BAR */}
+      <div className="absolute bottom-3 left-3 right-3 z-10 flex items-center gap-2">
+        <div className="bg-white/85 backdrop-blur-sm rounded-xl px-3 py-1.5 text-[10px] text-text-muted">
+          {building.floor_count} Kat · {building.width.toFixed(0)}×{building.depth.toFixed(0)}m · {building.total_height.toFixed(1)}m
+        </div>
+        <div className="flex-1" />
+        <button onClick={() => setShow4D(!show4D)}
+          className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all shadow-sm ${show4D ? 'bg-primary text-white' : 'bg-white/85 backdrop-blur-sm text-text-muted hover:text-text'}`}>
+          ⏱️ 4D İnşaat
+        </button>
+        <button onClick={() => setShowCostHeatmap(!showCostHeatmap)}
+          className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all shadow-sm ${showCostHeatmap ? 'bg-emerald-600 text-white' : 'bg-white/85 backdrop-blur-sm text-text-muted hover:text-text'}`}>
+          💰 5D Maliyet
+        </button>
+        {(showCostHeatmap || show4D) && totalCost > 0 && (
+          <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-lg px-3 py-1.5 text-xs font-bold text-emerald-700">
+            Toplam: ₺{(totalCost / 1_000_000).toFixed(1)}M
+          </div>
+        )}
       </div>
+
+      {measureMode && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20">
+          <div className="bg-red-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg animate-pulse">
+            📏 Ölçüm Modu — İki nokta tıklayın
+          </div>
+        </div>
+      )}
     </div>
   )
 }
