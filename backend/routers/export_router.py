@@ -194,11 +194,14 @@ class PDFReportRequest(BaseModel):
     deprem_data: Optional[dict] = None
     enerji_data: Optional[dict] = None
     ai_yorum: Optional[str] = None
+    clash_data: Optional[dict] = None
+    mep_data: Optional[dict] = None
+    senaryo_data: Optional[dict] = None
 
 
 @router.post("/pdf")
 async def export_pdf(req: PDFReportRequest):
-    """Profesyonel fizibilite PDF raporu üret (15-20 sayfa)."""
+    """Profesyonel fizibilite PDF raporu üret (20+ sayfa)."""
     try:
         from export.pdf_report import generate_pdf_report
 
@@ -210,6 +213,9 @@ async def export_pdf(req: PDFReportRequest):
             deprem_data=req.deprem_data,
             enerji_data=req.enerji_data,
             ai_yorum=req.ai_yorum,
+            clash_data=req.clash_data,
+            mep_data=req.mep_data,
+            senaryo_data=req.senaryo_data,
         )
 
         # Dosyaya kaydet ve dön

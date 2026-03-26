@@ -261,9 +261,13 @@ def generate_pdf_report(
     deprem_data: Optional[dict] = None,
     enerji_data: Optional[dict] = None,
     ai_yorum: Optional[str] = None,
+    clash_data: Optional[dict] = None,
+    mep_data: Optional[dict] = None,
+    senaryo_data: Optional[dict] = None,
 ) -> bytes:
     """
-    15-20 sayfa profesyonel fizibilite raporu üretir.
+    20+ sayfa profesyonel fizibilite raporu üretir.
+    Yeni sayfalar: Yönetici Özeti, MEP Şeması, Clash Raporu, Senaryo Karşılaştırma.
     Returns: PDF dosyasının binary içeriği (bytes).
     """
     buf = io.BytesIO()
@@ -315,19 +319,26 @@ def generate_pdf_report(
 
     story.append(Paragraph('İçindekiler', styles['H1']))
     toc_items = [
-        ('1. Proje Özeti', 3), ('2. Maliyet Analizi', 4),
-        ('3. Gelir Analizi', 5), ('4. Kâr/Zarar Özet', 6),
-        ('5. Nakit Akışı', 7), ('6. Duyarlılık Analizi', 8),
-        ('7. Monte Carlo Simülasyonu', 9), ('8. Tornado Analizi', 10),
+        ('1. Yönetici Özeti (Executive Summary)', 3),
+        ('2. Proje Özeti', 4), ('3. Maliyet Analizi', 5),
+        ('4. Gelir Analizi', 6), ('5. Kâr/Zarar Özet', 7),
+        ('6. Nakit Akışı', 8), ('7. Duyarlılık Analizi', 9),
+        ('8. Monte Carlo Simülasyonu', 10), ('9. Tornado Analizi', 11),
     ]
+    if senaryo_data:
+        toc_items.append(('10. Senaryo Karşılaştırma', 12))
     if deprem_data:
-        toc_items.append(('9. Deprem Analizi', 11))
+        toc_items.append(('11. Deprem Analizi', 13))
     if enerji_data:
-        toc_items.append(('10. Enerji Performansı', 12))
+        toc_items.append(('12. Enerji Performansı', 14))
+    if clash_data:
+        toc_items.append(('13. BIM Çakışma Raporu', 15))
+    if mep_data:
+        toc_items.append(('14. MEP Tesisat Özeti', 16))
     if ai_yorum:
-        toc_items.append(('11. AI Değerlendirme', 13))
-    toc_items.append(('Sonuç ve Öneriler', 14))
-    toc_items.append(('Yasal Uyarı', 15))
+        toc_items.append(('15. AI Değerlendirme', 17))
+    toc_items.append(('Sonuç ve Öneriler', 18))
+    toc_items.append(('Yasal Uyarı', 19))
 
     for title, page in toc_items:
         toc_row = Table(
@@ -343,7 +354,61 @@ def generate_pdf_report(
     story.append(PageBreak())
 
     # ══════════════════════════════════════
-    # SAYFA 3: PROJE ÖZETİ
+    # SAYFA 3: YÖNETİCİ ÖZETİ (Executive Summary)
+    # ══════════════════════════════════════
+
+    story.append(Paragraph('1. Yönetici Özeti', styles['H1']))
+    story.append(Spacer(1, 4 * mm))
+
+    ozet_pre = fizibilite_data.get('ozet', {})
+    params_pre = fizibilite_data.get('parametreler', {})
+    mc_pre = fizibilite_data.get('monte_carlo', {})
+    na_pre = fizibilite_data.get('nakit_akisi', {})
+    irr_pre = fizibilite_data.get('irr_yillik', 0)
+
+    kar_marji_pre = ozet_pre.get('kar_marji', 0)
+    toplam_gelir_pre = ozet_pre.get('toplam_gelir', 0)
+    toplam_gider_pre = ozet_pre.get('toplam_gider', 0)
+    kar_pre = ozet_pre.get('kar', 0)
+
+    # GO / NO-GO karar
+    if kar_marji_pre > 15 and mc_pre.get('zarar_olasiligi', 50) < 20:
+        karar = 'GO ✅'
+        karar_renk = SUCCESS
+    elif kar_marji_pre > 5 and mc_pre.get('zarar_olasiligi', 50) < 40:
+        karar = 'DİKKATLİ ⚠️'
+        karar_renk = ACCENT
+    else:
+        karar = 'NO-GO ❌'
+        karar_renk = DANGER
+
+    story.append(Paragraph(f'<b>Yatırım Kararı: {karar}</b>',
+        ParagraphStyle('Decision', fontName=FONT_BOLD, fontSize=16, textColor=karar_renk, alignment=TA_CENTER, spaceAfter=10)))
+
+    # Anahtar metrikler
+    exec_data = [
+        ['Metrik', 'Değer', 'Değerlendirme'],
+        ['Toplam Maliyet', f'₺{toplam_gider_pre/1e6:.1f}M', ''],
+        ['Toplam Gelir', f'₺{toplam_gelir_pre/1e6:.1f}M', ''],
+        ['Net Kâr', f'₺{kar_pre/1e6:.1f}M', 'Kârlı' if kar_pre > 0 else 'Zararda'],
+        ['Kâr Marjı', f'%{kar_marji_pre:.1f}', 'İyi' if kar_marji_pre > 15 else 'Düşük' if kar_marji_pre > 0 else 'Zararda'],
+        ['Yıllık IRR', f'%{irr_pre:.1f}', 'Yüksek getiri' if irr_pre > 20 else 'Orta' if irr_pre > 10 else 'Düşük'],
+        ['Zarar Olasılığı', f'%{mc_pre.get("zarar_olasiligi", 0):.1f}', 'Düşük risk' if mc_pre.get("zarar_olasiligi", 50) < 15 else 'Orta risk' if mc_pre.get("zarar_olasiligi", 50) < 30 else 'Yüksek risk'],
+        ['Geri Dönüş', f'{na_pre.get("payback_ay", "-")} ay', ''],
+        ['Daire Sayısı', f'{params_pre.get("toplam_daire", "-")}', ''],
+    ]
+    story.append(_make_table(exec_data, col_widths=[50*mm, 40*mm, 60*mm]))
+    story.append(Spacer(1, 8 * mm))
+
+    story.append(Paragraph(
+        'Bu özet sayfa karar vericiler için hazırlanmıştır. Detaylı analiz için sonraki sayfalara bakınız.',
+        styles['Small']
+    ))
+
+    story.append(PageBreak())
+
+    # ══════════════════════════════════════
+    # SAYFA 4: PROJE ÖZETİ
     # ══════════════════════════════════════
 
     story.append(Paragraph('1. Proje Özeti', styles['H1']))
@@ -605,6 +670,135 @@ def generate_pdf_report(
         for paragraph in ai_yorum.split('\n'):
             if paragraph.strip():
                 story.append(Paragraph(paragraph.strip(), styles['Body']))
+        story.append(PageBreak())
+
+    # ══════════════════════════════════════
+    # YÖNETİCİ ÖZETİ (Executive Summary) — Kapak sonrasına ekle
+    # ══════════════════════════════════════
+    # (İçindekiler sayfasından sonra, proje özetinden önce)
+
+    # ══════════════════════════════════════
+    # SENARYO KARŞILAŞTIRMA SAYFASI
+    # ══════════════════════════════════════
+    if senaryo_data and isinstance(senaryo_data, dict):
+        senaryolar = senaryo_data.get('senaryolar', [])
+        if senaryolar:
+            story.append(Paragraph('Senaryo Karşılaştırma', styles['H1']))
+            story.append(Paragraph('İyimser, Baz ve Kötümser senaryolara göre proje değerlendirmesi:', styles['Body']))
+            story.append(Spacer(1, 4 * mm))
+
+            s_header = ['Senaryo', 'Maliyet', 'Gelir', 'Kâr', 'Kâr Marjı', 'ROI']
+            s_rows = [s_header]
+            for s in senaryolar:
+                s_rows.append([
+                    s.get('senaryo', ''),
+                    f"₺{s.get('toplam_maliyet', 0)/1e6:.1f}M",
+                    f"₺{s.get('toplam_gelir', 0)/1e6:.1f}M",
+                    f"₺{s.get('kar', 0)/1e6:.1f}M",
+                    f"%{s.get('kar_marji', 0):.1f}",
+                    f"%{s.get('roi', 0):.1f}",
+                ])
+            story.append(_make_table(s_rows, col_widths=[30*mm, 28*mm, 28*mm, 28*mm, 25*mm, 25*mm]))
+            story.append(PageBreak())
+
+    # ══════════════════════════════════════
+    # BIM ÇAKIŞMA RAPORU SAYFASI
+    # ══════════════════════════════════════
+    if clash_data and isinstance(clash_data, dict):
+        story.append(Paragraph('BIM Çakışma Raporu', styles['H1']))
+
+        toplam = clash_data.get('toplam_cakisma', 0)
+        kritik = clash_data.get('kritik', 0)
+        uyari = clash_data.get('uyari', 0)
+        bilgi = clash_data.get('bilgi', 0)
+        sonuc = clash_data.get('sonuc', '')
+
+        story.append(Paragraph(f'Sonuç: {sonuc}', styles['Body']))
+        story.append(Spacer(1, 4 * mm))
+
+        ozet_data = [
+            ['Toplam Kontrol', 'Toplam Çakışma', 'Kritik', 'Uyarı', 'Bilgi'],
+            [str(clash_data.get('toplam_kontrol', 0)), str(toplam), str(kritik), str(uyari), str(bilgi)],
+        ]
+        story.append(_make_table(ozet_data, col_widths=[35*mm]*5))
+        story.append(Spacer(1, 6 * mm))
+
+        # Çakışma detayları (ilk 10)
+        cakismalar = clash_data.get('cakismalar', [])[:10]
+        if cakismalar:
+            story.append(Paragraph('Çakışma Detayları:', styles['H2']))
+            c_header = ['Eleman A', 'Eleman B', 'Tip', 'Seviye', 'Açıklama']
+            c_rows = [c_header]
+            for c in cakismalar:
+                c_rows.append([
+                    c.get('element_a', '')[:15],
+                    c.get('element_b', '')[:15],
+                    c.get('clash_type', ''),
+                    c.get('severity', ''),
+                    c.get('description', '')[:40],
+                ])
+            story.append(_make_table(c_rows, col_widths=[30*mm, 30*mm, 20*mm, 20*mm, 70*mm]))
+
+        story.append(PageBreak())
+
+    # ══════════════════════════════════════
+    # MEP TESİSAT ÖZETİ SAYFASI
+    # ══════════════════════════════════════
+    if mep_data and isinstance(mep_data, dict):
+        story.append(Paragraph('MEP Tesisat Özeti', styles['H1']))
+
+        story.append(Paragraph(
+            f"Toplam: {mep_data.get('toplam_node', 0)} düğüm, "
+            f"{mep_data.get('toplam_hat', 0)} hat, "
+            f"{mep_data.get('toplam_fitting', 0)} bağlantı — "
+            f"{mep_data.get('toplam_uzunluk_m', 0):.1f}m toplam uzunluk",
+            styles['Body']
+        ))
+        story.append(Spacer(1, 4 * mm))
+
+        # Disiplin bazlı tablo
+        disciplines = mep_data.get('disciplines', {})
+        if disciplines:
+            d_header = ['Disiplin', 'Düğüm', 'Hat', 'Uzunluk (m)', 'Fitting']
+            d_rows = [d_header]
+            DISIPLIN_ISIMLERI = {
+                'elektrik': 'Elektrik', 'temiz_su': 'Temiz Su',
+                'pis_su': 'Pis Su', 'isitma': 'Isıtma',
+                'havalandirma': 'Havalandırma', 'yangin': 'Yangın',
+            }
+            for key, info in disciplines.items():
+                d_rows.append([
+                    DISIPLIN_ISIMLERI.get(key, key),
+                    str(info.get('node_count', 0)),
+                    str(info.get('line_count', 0)),
+                    f"{info.get('total_length_m', 0):.1f}",
+                    str(info.get('fitting_count', 0)),
+                ])
+            story.append(_make_table(d_rows, col_widths=[35*mm, 25*mm, 25*mm, 30*mm, 25*mm]))
+            story.append(Spacer(1, 6 * mm))
+
+        # Maliyet tahmini
+        maliyet = mep_data.get('maliyet_tahmini', {})
+        if maliyet:
+            story.append(Paragraph(f"<b>Toplam MEP Maliyet Tahmini: ₺{maliyet.get('toplam_tl', 0):,.0f}</b>", styles['Body']))
+            disiplin_bazli = maliyet.get('disiplin_bazli', {})
+            if disiplin_bazli:
+                m_rows = [['Disiplin', 'Maliyet (₺)']]
+                for dk, dv in disiplin_bazli.items():
+                    m_rows.append([DISIPLIN_ISIMLERI.get(dk, dk), f"₺{dv:,.0f}"])
+                story.append(_make_table(m_rows, col_widths=[50*mm, 50*mm]))
+
+        # Yük dengesi
+        yuk = mep_data.get('yuk_dengesi', {})
+        if yuk:
+            story.append(Spacer(1, 4 * mm))
+            story.append(Paragraph(
+                f"<b>Elektrik:</b> {yuk.get('toplam_guc_kw', 0)} kW toplam, "
+                f"{yuk.get('ana_sigorta_a', 0)}A sigorta, "
+                f"faz dengesizliği %{yuk.get('faz_dengesizligi_pct', 0):.0f}",
+                styles['Body']
+            ))
+
         story.append(PageBreak())
 
     # ══════════════════════════════════════

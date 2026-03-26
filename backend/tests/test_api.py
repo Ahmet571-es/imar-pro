@@ -761,3 +761,57 @@ class TestEnergyDeep:
         result = gunes_paneli_roi(cati_alani=100)
         assert result["net_kazanc_tl"] > 0
         assert result["co2_azaltma_ton"] > 0
+
+
+# ══════════════════════════════════════
+# 18. PDF RAPOR DERİNLEŞTİRME (H)
+# ══════════════════════════════════════
+
+class TestPDFDeep:
+    def test_pdf_with_clash_mep(self, client):
+        """PDF rapor — clash + MEP + senaryo verileriyle."""
+        r = client.post("/api/export/pdf", json={
+            "proje_adi": "Derinleştirilmiş Test Proje",
+            "parsel_data": {"alan_m2": 600, "kose_sayisi": 4, "cevre_m": 100},
+            "imar_data": {"kat_adedi": 4, "taks": 0.35, "kaks": 1.4},
+            "fizibilite_data": {
+                "ozet": {"toplam_gelir": 56000000, "toplam_gider": 42000000,
+                         "kar": 14000000, "kar_marji": 25, "roi": 33.3},
+                "parametreler": {"toplam_daire": 8},
+                "monte_carlo": {"zarar_olasiligi": 12},
+                "nakit_akisi": {"payback_ay": 22},
+                "irr_yillik": 28.5,
+                "maliyet": {}, "gelir": {},
+            },
+            "clash_data": {
+                "toplam_kontrol": 15, "toplam_cakisma": 2,
+                "kritik": 0, "uyari": 1, "bilgi": 1,
+                "sonuc": "✅ Çakışma yok",
+                "cakismalar": [
+                    {"element_a": "Mini Banyo", "element_b": "Min. alan",
+                     "clash_type": "clearance", "severity": "warning",
+                     "description": "Mini Banyo: 2.25m² < minimum 3.5m²"},
+                ],
+            },
+            "mep_data": {
+                "toplam_node": 25, "toplam_hat": 18, "toplam_fitting": 12,
+                "toplam_uzunluk_m": 95.4,
+                "disciplines": {
+                    "elektrik": {"node_count": 10, "line_count": 8,
+                                 "total_length_m": 45, "fitting_count": 6},
+                    "temiz_su": {"node_count": 5, "line_count": 4,
+                                 "total_length_m": 20, "fitting_count": 3},
+                },
+                "maliyet_tahmini": {"toplam_tl": 85000, "disiplin_bazli": {"elektrik": 45000, "temiz_su": 40000}},
+                "yuk_dengesi": {"toplam_guc_kw": 8.5, "ana_sigorta_a": 25, "faz_dengesizligi_pct": 12},
+            },
+            "senaryo_data": {
+                "senaryolar": [
+                    {"senaryo": "İyimser", "toplam_maliyet": 38000000, "toplam_gelir": 64000000, "kar": 26000000, "kar_marji": 40.6, "roi": 68.4},
+                    {"senaryo": "Baz", "toplam_maliyet": 42000000, "toplam_gelir": 56000000, "kar": 14000000, "kar_marji": 25.0, "roi": 33.3},
+                    {"senaryo": "Kötümser", "toplam_maliyet": 48000000, "toplam_gelir": 50000000, "kar": 2000000, "kar_marji": 4.0, "roi": 4.2},
+                ],
+            },
+        })
+        assert r.status_code == 200
+        assert len(r.content) > 15000  # Genişletilmiş PDF en az 15KB
