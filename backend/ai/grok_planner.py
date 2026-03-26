@@ -1,6 +1,6 @@
 """
 Grok 4 Plan Üretim Modülü — xAI API (OpenAI uyumlu).
-Model: grok-4.20 (plan üretimi)
+Model: grok-4 (plan üretimi)
 """
 
 import json
@@ -90,7 +90,7 @@ def generate_plans_grok(
         user_prompt = _build_prompt(polygon_coords, apartment_program, sun_direction, plan_count, previous_feedback)
 
         response = client.chat.completions.create(
-            model="grok-4.20",
+            model="grok-4",
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_prompt},

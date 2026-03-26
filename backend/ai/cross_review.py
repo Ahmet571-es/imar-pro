@@ -103,7 +103,7 @@ def _review_with_grok(plan_info: str, api_key: str) -> dict | None:
         from openai import OpenAI
         client = OpenAI(base_url="https://api.x.ai/v1", api_key=api_key)
         response = client.chat.completions.create(
-            model="grok-4.20",
+            model="grok-4",
             messages=[{"role": "user", "content": REVIEW_PROMPT.format(plan_info=plan_info)}],
             max_tokens=1024,
         )
