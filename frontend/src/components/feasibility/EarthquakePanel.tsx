@@ -1,12 +1,13 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
 import { toast } from '@/stores/toastStore'
-import { analyzeEarthquake, getAfadIller } from '@/services/api'
+import { analyzeEarthquake, getAfadIller, getSeismicForces, getBuildingPeriod } from '@/services/api'
 import { cn } from '@/lib/utils'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
+  BarChart, Bar,
 } from 'recharts'
-import { Loader2, TriangleAlert, ShieldAlert, Activity, MapPin } from 'lucide-react'
+import { Loader2, TriangleAlert, ShieldAlert, Activity, MapPin, ChevronDown, ChevronUp } from 'lucide-react'
 
 interface EarthquakeData {
   parametreler: { ss: number; s1: number; zemin_sinifi: string; zemin_aciklama: string; bks: number; bys: number; deprem_bolgesi: string; risk_seviyesi: string; afad_api: boolean }
@@ -161,6 +162,15 @@ export function EarthquakePanel({ katSayisi, binaW, binaH, il = 'Ankara' }: Prop
               </div>
             </div>
           </div>
+
+          {/* Kat Kuvvet Dağılımı (Derinleştirme) */}
+          <FloorForceChart
+            katSayisi={katSayisi}
+            katAlan={binaW * binaH}
+            ss={data.parametreler.ss}
+            s1={data.parametreler.s1}
+            zemin={zemin}
+          />
         </div>
       )}
     </div>
@@ -172,6 +182,67 @@ function MiniCard({ label, value, className }: { label: string; value: string; c
     <div className="bg-surface-alt rounded-lg px-3 py-2">
       <div className="text-[10px] text-text-muted">{label}</div>
       <div className={cn('text-sm font-bold font-mono', className || 'text-text')}>{value}</div>
+    </div>
+  )
+}
+
+// ── Kat Kuvvet Dağılımı Alt Bileşeni ──
+function FloorForceChart({ katSayisi, katAlan, ss, s1, zemin }: {
+  katSayisi: number; katAlan: number; ss: number; s1: number; zemin: string
+}) {
+  const [forceData, setForceData] = useState<{ katlar: { kat: number; deprem_kuvveti_kn: number; kat_kesme_kn: number }[]; taban_kesme_kn: number } | null>(null)
+  const [expanded, setExpanded] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  const loadForces = async () => {
+    setLoading(true)
+    try {
+      const result = await getSeismicForces({
+        kat_sayisi: katSayisi, kat_alan: katAlan,
+        ss, s1, zemin_sinifi: zemin,
+      }) as typeof forceData & { katlar: { kat: number; deprem_kuvveti_kn: number; kat_kesme_kn: number }[] }
+      setForceData(result)
+      setExpanded(true)
+    } catch { /* ignore */ }
+    setLoading(false)
+  }
+
+  const chartData = forceData?.katlar.map(k => ({
+    name: `Kat ${k.kat}`,
+    'Deprem Kuvveti (kN)': k.deprem_kuvveti_kn,
+    'Kat Kesme (kN)': k.kat_kesme_kn,
+  })) || []
+
+  return (
+    <div className="border rounded-lg overflow-hidden">
+      <button
+        className="w-full flex items-center justify-between px-3 py-2 bg-red-50 hover:bg-red-100 transition text-sm"
+        onClick={expanded ? () => setExpanded(false) : loadForces}
+      >
+        <span className="font-semibold flex items-center gap-2">
+          <Activity className="w-4 h-4 text-red-600" /> Kat Bazlı Deprem Kuvveti Dağılımı
+        </span>
+        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+      </button>
+      {expanded && forceData && (
+        <div className="p-3">
+          <div className="text-xs text-slate-500 mb-2">
+            Taban Kesme: <strong>{forceData.taban_kesme_kn?.toLocaleString()} kN</strong> — Üçgensel dağılım (TBDY 2018)
+          </div>
+          <div style={{ height: 200 }}>
+            <ResponsiveContainer>
+              <BarChart data={chartData} layout="vertical" margin={{ left: 5, right: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                <XAxis type="number" fontSize={9} tickFormatter={(v: number) => `${v} kN`} />
+                <YAxis type="category" dataKey="name" fontSize={9} width={45} />
+                <Tooltip formatter={(v) => typeof v === "number" ? `${v.toFixed(1)} kN` : v} />
+                <Bar dataKey="Deprem Kuvveti (kN)" fill="#ef4444" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="Kat Kesme (kN)" fill="#f97316" radius={[0, 4, 4, 0]} opacity={0.6} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
