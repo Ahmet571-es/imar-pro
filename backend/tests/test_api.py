@@ -413,23 +413,37 @@ class TestBIM:
         data = r.json()
         assert data["toplam_node"] > 0
         assert data["toplam_hat"] > 0
+        assert data["toplam_fitting"] > 0  # Dirsek/T-bağlantı
         assert "disciplines" in data
         assert "elektrik" in data["disciplines"]
-        assert "su" in data["disciplines"]
+        assert "temiz_su" in data["disciplines"]
+        assert "pis_su" in data["disciplines"]
+        assert "yangin" in data["disciplines"]
+        assert "yuk_dengesi" in data
+        assert data["yuk_dengesi"]["toplam_guc_w"] > 0
 
     def test_ifc_summary(self, client, bim_rooms):
         r = client.post("/api/bim/ifc-summary", json={"rooms": bim_rooms, "kat_sayisi": 4})
         assert r.status_code == 200
         data = r.json()
         assert data["schema"] == "IFC4"
+        assert data["bim_level"] == "LOD 300"
         assert data["entities"]["IfcWall"] == 64  # 4 rooms × 4 walls × 4 floors
         assert data["entities"]["IfcBuildingStorey"] == 4
+        assert data["entities"]["IfcStairFlight"] == 4  # Her katta merdiven
+        assert data["entities"]["IfcSpace"] == 16  # 4 rooms × 4 floors
+        assert "IfcColumn" in data["entities"]
+        assert "IfcDoor" in data["entities"]
+        assert data["materials"] > 0
+        assert data["property_sets"] > 0
+        assert "kolon_grid" in data
 
     def test_disciplines(self, client):
         r = client.get("/api/bim/disciplines")
         assert r.status_code == 200
         data = r.json()
-        assert len(data["disciplines"]) == 5
+        assert len(data["disciplines"]) == 6  # mimari, strüktür, elektrik, mekanik, havalandırma, yangın
+        assert data["bim_level"] == "LOD 300"
 
     def test_bim_summary(self, client, bim_rooms):
         r = client.post("/api/bim/summary", json={
@@ -440,7 +454,7 @@ class TestBIM:
         assert "ifc" in data
         assert "clash_detection" in data
         assert "mep" in data
-        assert data["bim_level"] == "LOD 200"
+        assert data["bim_level"] == "LOD 300"
 
     def test_clash_min_area(self):
         """Minimum oda alanı kontrolü."""
@@ -460,6 +474,112 @@ class TestBIM:
         mep = generate_mep_schematic(rooms)
         data = mep.to_dict()
         assert data["maliyet_tahmini"]["toplam_tl"] > 0
+
+    def test_ifc_lod300_entities(self):
+        """LOD 300: pencere, kapı, kolon, merdiven, space olmalı."""
+        from export.ifc_exporter import get_ifc_summary
+        rooms = [
+            {"name": "Salon", "type": "salon", "x": 0, "y": 0, "width": 5, "height": 4, "is_exterior": True},
+            {"name": "Banyo", "type": "banyo", "x": 5.2, "y": 0, "width": 2.5, "height": 2.5, "is_exterior": True},
+        ]
+        data = get_ifc_summary(rooms, kat_sayisi=3)
+        assert data["bim_level"] == "LOD 300"
+        assert data["entities"]["IfcWindow"] > 0
+        assert data["entities"]["IfcDoor"] > 0
+        assert data["entities"]["IfcColumn"] > 0
+        assert data["entities"]["IfcStairFlight"] == 3
+        assert data["entities"]["IfcSpace"] == 6  # 2 rooms × 3 floors
+
+    def test_clash_3d_volume(self):
+        """3D çakışma hacim kontrolü."""
+        from analysis.clash_detection import detect_clashes
+        rooms = [
+            {"name": "Salon", "type": "salon", "x": 0, "y": 0, "width": 5, "height": 4},
+        ]
+        # Kolon odanın tam ortasında
+        kolonlar = [{"name": "K1", "x": 2.3, "y": 1.8, "width": 0.4, "height": 0.4}]
+        report = detect_clashes(rooms, kolonlar=kolonlar, kat_yuksekligi=3.0)
+        assert report.total_checks > 0
+
+    def test_clash_severity_groups(self):
+        """Çakışma raporunda severity grupları olmalı."""
+        from analysis.clash_detection import detect_clashes
+        rooms = [
+            {"name": "Mini WC", "type": "wc", "x": 0, "y": 0, "width": 0.8, "height": 0.8},
+        ]
+        report = detect_clashes(rooms)
+        data = report.to_dict()
+        assert "ozet" in data
+        assert "severity_gruplu" in data
+        assert "hard_clash" in data["ozet"]
+
+    def test_mep_fittings(self):
+        """MEP dirsek ve T-bağlantıları üretilmeli."""
+        from analysis.mep_schematic import generate_mep_schematic
+        rooms = [
+            {"name": "Salon", "type": "salon", "x": 0, "y": 0, "width": 5, "height": 4},
+            {"name": "Banyo", "type": "banyo", "x": 5.2, "y": 0, "width": 2.5, "height": 2.5},
+            {"name": "Mutfak", "type": "mutfak", "x": 0, "y": 4.2, "width": 3, "height": 2.5},
+        ]
+        mep = generate_mep_schematic(rooms)
+        assert len(mep.fittings) > 0
+        fitting_types = {f.fitting_type for f in mep.fittings}
+        assert "elbow_90" in fitting_types or "tee" in fitting_types
+
+    def test_mep_pis_su_ayri(self):
+        """Temiz su ve pis su ayrı disiplinler olmalı."""
+        from analysis.mep_schematic import generate_mep_schematic
+        rooms = [
+            {"name": "Banyo", "type": "banyo", "x": 0, "y": 0, "width": 2.5, "height": 2.5},
+            {"name": "WC", "type": "wc", "x": 2.7, "y": 0, "width": 1.5, "height": 1.5},
+        ]
+        mep = generate_mep_schematic(rooms)
+        data = mep.to_dict()
+        assert "temiz_su" in data["disciplines"]
+        assert "pis_su" in data["disciplines"]
+
+    def test_mep_yangin(self):
+        """Yangın tesisatı — dolap ve sprinkler olmalı."""
+        from analysis.mep_schematic import generate_mep_schematic
+        rooms = [
+            {"name": "Salon", "type": "salon", "x": 0, "y": 0, "width": 5, "height": 4},
+            {"name": "Banyo", "type": "banyo", "x": 5.2, "y": 0, "width": 2.5, "height": 2.5},
+        ]
+        mep = generate_mep_schematic(rooms)
+        data = mep.to_dict()
+        assert "yangin" in data["disciplines"]
+        yangin_nodes = data["disciplines"]["yangin"]["nodes"]
+        node_types = {n["node_type"] for n in yangin_nodes}
+        assert "yangin_dolabi" in node_types
+        assert "sprinkler" in node_types
+
+    def test_mep_yuk_dengesi(self):
+        """Elektrik yük dengesi hesaplanmalı."""
+        from analysis.mep_schematic import generate_mep_schematic
+        rooms = [
+            {"name": "Salon", "type": "salon", "x": 0, "y": 0, "width": 5, "height": 4},
+            {"name": "Mutfak", "type": "mutfak", "x": 5.2, "y": 0, "width": 3, "height": 2.5},
+            {"name": "Yatak", "type": "yatak_odasi", "x": 0, "y": 4.2, "width": 4, "height": 3},
+        ]
+        mep = generate_mep_schematic(rooms)
+        yd = mep.yuk_dengesi
+        assert yd["toplam_guc_w"] > 0
+        assert yd["ana_sigorta_a"] >= 16
+        assert "faz_yukleri_w" in yd
+        assert len(yd["faz_yukleri_w"]) == 3
+
+    def test_clash_yangin_mesafe(self):
+        """Yangın kaçış mesafesi kontrolü."""
+        from analysis.clash_detection import detect_clashes
+        # Merdiven bir köşede, oda çok uzakta (>30m)
+        rooms = [
+            {"name": "Merdiven", "type": "merdiven", "x": 0, "y": 0, "width": 2.5, "height": 3},
+            {"name": "Uzak Oda", "type": "salon", "x": 35, "y": 35, "width": 5, "height": 4},
+        ]
+        report = detect_clashes(rooms)
+        # Uzak oda merdivenden >30m olmalı → critical clash
+        yangin = [c for c in report.clashes if "Yangın" in c.element_b or "merdiven" in c.description.lower()]
+        assert len(yangin) > 0
 
 
 if __name__ == "__main__":
