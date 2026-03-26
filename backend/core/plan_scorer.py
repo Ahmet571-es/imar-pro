@@ -259,8 +259,20 @@ def score_plan(
     # ── 9. Yönetmelik Uyumu ──
     if violations is None:
         violations = []
+
+    # E3: Engelli erişim kontrolü
+    accessibility_issues = _check_accessibility(plan)
+    violations.extend(accessibility_issues)
+
+    # E4: Yangın kaçış mesafesi
+    fire_issues = _check_fire_escape(plan)
+    violations.extend(fire_issues)
+
     viol_penalty = len(violations) * 20
     score.code_compliance = max(0, 100 - viol_penalty) * w["code_compliance"]
+
+    for v in violations:
+        score.details.append(f"❌ {v}")
 
     # ── TOPLAM ──
     score.total = (
@@ -276,3 +288,51 @@ def score_plan(
     )
 
     return score
+
+
+def _check_accessibility(plan: FloorPlan) -> list[str]:
+    """Engelli erişim kontrolü — TS 9111 standardı."""
+    issues = []
+
+    # WC/banyo minimum dönüş çapı: 150cm (engelli WC)
+    for room in plan.rooms:
+        if room.room_type in ("banyo", "wc"):
+            min_dim = min(room.width, room.height)
+            if min_dim < 1.2:
+                issues.append(f"{room.name}: dar kenar {min_dim:.1f}m < 1.2m (engelli erişimi yetersiz)")
+
+    # Kapı genişliği kontrolü (antre/giriş en az 90cm olmalı)
+    antre_rooms = plan.get_rooms_by_type("antre")
+    for antre in antre_rooms:
+        if min(antre.width, antre.height) < 1.0:
+            issues.append(f"{antre.name}: giriş genişliği yetersiz (min 1.0m gerekli)")
+
+    # Koridor genişliği (en az 110cm tekerlekli sandalye)
+    koridor_rooms = plan.get_rooms_by_type("koridor")
+    for kor in koridor_rooms:
+        if min(kor.width, kor.height) < 1.1:
+            issues.append(f"{kor.name}: genişlik {min(kor.width, kor.height):.1f}m < 1.1m (engelli geçişi)")
+
+    return issues
+
+
+def _check_fire_escape(plan: FloorPlan) -> list[str]:
+    """Yangın kaçış mesafesi kontrolü — max 30m."""
+    issues = []
+
+    # Merdiven veya çıkışa mesafe
+    exits = [r for r in plan.rooms if r.room_type in ("merdiven", "koridor")]
+    if not exits:
+        return issues  # Merdiven yoksa kontrol yapma
+
+    exit_center = exits[0].center
+
+    for room in plan.rooms:
+        if room.room_type in ("merdiven", "koridor"):
+            continue
+        rx, ry = room.center
+        dist = math.sqrt((rx - exit_center[0])**2 + (ry - exit_center[1])**2)
+        if dist > 30:
+            issues.append(f"{room.name} → çıkış mesafesi {dist:.1f}m > max 30m (yangın yönetmeliği)")
+
+    return issues
