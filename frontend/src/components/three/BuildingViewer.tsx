@@ -77,6 +77,10 @@ interface SceneProps {
   flyToTarget: { position: Vec3; dimensions: { width: number; height: number; depth: number } } | null
   onFlyToComplete: () => void
   exportRef: React.RefObject<ExportActionsRef | null>
+  // ── D+F derinleştirme ──
+  visibleDisciplines: Set<string>
+  showShadowAnalysis: boolean
+  windDirection: number  // derece (0=kuzey, 90=doğu, 180=güney, 270=batı)
 }
 
 function BuildingScene({
@@ -90,6 +94,7 @@ function BuildingScene({
   onHoverRoom, onClickRoom, onDoubleClickRoom, onMeasureClick,
   targetPreset, flyToTarget, onFlyToComplete,
   exportRef,
+  visibleDisciplines, showShadowAnalysis, windDirection,
 }: SceneProps) {
   const materials = usePBRMaterials()
   const explodeOffset = exploded ? 2.0 : 0
@@ -259,7 +264,7 @@ function BuildingScene({
         )
       })}
 
-      {showColumns && columns.map((col) => (
+      {showColumns && visibleDisciplines.has('struktur') && columns.map((col) => (
         <Column
           key={col.id}
           col={col}
@@ -270,7 +275,7 @@ function BuildingScene({
       ))}
 
       {/* Beams — kolon arası kirişler (her kat seviyesinde) */}
-      {showColumns && viewMode !== 'wireframe' && columns.length > 1 && floors.map((floor) => {
+      {showColumns && visibleDisciplines.has('struktur') && viewMode !== 'wireframe' && columns.length > 1 && floors.map((floor) => {
         const beamY = floor.floor_y + building.floor_height
         const beams: React.JSX.Element[] = []
         // Yatay kirişler (x yönü) — aynı z'deki kolonlar arası
@@ -379,7 +384,73 @@ function BuildingScene({
       <AxisGridLines columns={columns} building={building} viewMode={viewMode} visible={showAxisGrid} />
 
       <MeasurementLine points={measurePoints} active={measureMode} />
+
+      {/* ── F5. Rüzgar Yönü Gösterimi ── */}
+      <WindDirectionArrow
+        building={building}
+        windDirection={windDirection}
+        visible={showAnnotations || viewMode === 'thermal'}
+      />
+
+      {/* ── F1. Gölge Analizi Zemini ── */}
+      {showShadowAnalysis && (
+        <mesh
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[building.width / 2, -0.02, building.depth / 2]}
+          receiveShadow
+        >
+          <planeGeometry args={[building.width * 3, building.depth * 3]} />
+          <shadowMaterial opacity={0.35} />
+        </mesh>
+      )}
     </>
+  )
+}
+
+// ── F5. Rüzgar Yönü Oku ──
+function WindDirectionArrow({ building, windDirection, visible }: {
+  building: BuildingInfo; windDirection: number; visible: boolean
+}) {
+  if (!visible) return null
+
+  const rad = (windDirection * Math.PI) / 180
+  const r = Math.max(building.width, building.depth) * 0.7
+  const cx = building.width / 2
+  const cz = building.depth / 2
+  const ax = cx + Math.sin(rad) * r
+  const az = cz - Math.cos(rad) * r
+  const h = building.total_height + 2
+
+  const WIND_LABELS: Record<number, string> = {
+    0: 'K', 45: 'KD', 90: 'D', 135: 'GD', 180: 'G', 225: 'GB', 270: 'B', 315: 'KB',
+  }
+  const closest = [0, 45, 90, 135, 180, 225, 270, 315].reduce(
+    (prev, curr) => Math.abs(curr - windDirection) < Math.abs(prev - windDirection) ? curr : prev
+  )
+  const label = WIND_LABELS[closest] || ''
+
+  return (
+    <group>
+      {/* Ok gövdesi — ince kutu */}
+      <mesh position={[(ax + cx) / 2, h, (az + cz) / 2]}
+        rotation={[0, -rad, 0]}>
+        <boxGeometry args={[0.08, 0.08, r]} />
+        <meshStandardMaterial color="#0ea5e9" />
+      </mesh>
+
+      {/* Ok ucu — koni */}
+      <mesh position={[cx, h, cz]}
+        rotation={[0, -rad, 0]}>
+        <coneGeometry args={[0.3, 0.8, 8]} />
+        <meshStandardMaterial color="#0ea5e9" />
+      </mesh>
+
+      {/* Başlangıç noktası */}
+      <mesh position={[ax, h + 0.5, az]}>
+        <sphereGeometry args={[0.25]} />
+        <meshStandardMaterial color="#0ea5e9" emissive="#0ea5e9" emissiveIntensity={0.3} />
+      </mesh>
+    </group>
   )
 }
 
@@ -392,11 +463,12 @@ export interface BuildingViewerProps {
   materials: Record<string, MaterialDef>
   totalCost?: number
   cashFlowData?: { ay: number; kumulatif: number }[]
+  visibleDisciplines?: Set<string>
 }
 
 // ── Main Component ──
 
-export function BuildingViewer({ floors, columns, building, totalCost = 0 }: BuildingViewerProps) {
+export function BuildingViewer({ floors, columns, building, totalCost = 0, visibleDisciplines: extDisciplines }: BuildingViewerProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('solid')
   const [selectedFloor, setSelectedFloor] = useState(-1)
   const [showColumns, setShowColumns] = useState(false)
@@ -424,6 +496,19 @@ export function BuildingViewer({ floors, columns, building, totalCost = 0 }: Bui
   const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const [showCostHeatmap, setShowCostHeatmap] = useState(false)
+
+  // ── D+F Derinleştirme ──
+  const [visibleDisciplines, setVisibleDisciplines] = useState<Set<string>>(
+    extDisciplines || new Set(['mimari', 'struktur'])
+  )
+  const [showShadowAnalysis, setShowShadowAnalysis] = useState(false)
+  const [windDirection, setWindDirection] = useState(225)
+  const [walkMode, setWalkMode] = useState(false)
+
+  // Sync external discipline visibility
+  useEffect(() => {
+    if (extDisciplines) setVisibleDisciplines(extDisciplines)
+  }, [extDisciplines])
 
   const exportRef = useRef<ExportActionsRef>(null)
 
@@ -529,6 +614,9 @@ export function BuildingViewer({ floors, columns, building, totalCost = 0 }: Bui
             targetPreset={targetPreset} flyToTarget={flyToTarget}
             onFlyToComplete={() => setFlyToTarget(null)}
             exportRef={exportRef}
+            visibleDisciplines={visibleDisciplines}
+            showShadowAnalysis={showShadowAnalysis}
+            windDirection={windDirection}
           />
         </Suspense>
       </Canvas>
@@ -624,12 +712,28 @@ export function BuildingViewer({ floors, columns, building, totalCost = 0 }: Bui
           </label>
         </div>
 
-        {/* Sun */}
+        {/* Sun + Shadow */}
         <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg px-3 py-2 text-xs">
-          <div className="font-semibold text-text mb-1">☀️ {sunHour}:00</div>
+          <div className="font-semibold text-text mb-1">☀️ Güneş {sunHour}:00</div>
           <input type="range" min={6} max={20} step={1} value={sunHour}
             onChange={(e) => setSunHour(Number(e.target.value))}
             className="w-full accent-amber-500" />
+          <label className="flex items-center gap-2 cursor-pointer mt-1.5">
+            <input type="checkbox" checked={showShadowAnalysis}
+              onChange={(e) => setShowShadowAnalysis(e.target.checked)} className="rounded" />
+            🌤️ Gölge Analizi
+          </label>
+        </div>
+
+        {/* Rüzgar */}
+        <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg px-3 py-2 text-xs">
+          <div className="font-semibold text-text mb-1">🌬️ Rüzgar {windDirection}°</div>
+          <input type="range" min={0} max={359} step={15} value={windDirection}
+            onChange={(e) => setWindDirection(Number(e.target.value))}
+            className="w-full accent-sky-500" />
+          <div className="flex justify-between text-[9px] text-text-muted mt-0.5">
+            <span>K</span><span>D</span><span>G</span><span>B</span><span>K</span>
+          </div>
         </div>
 
         {/* Section controls */}
@@ -719,6 +823,23 @@ export function BuildingViewer({ floors, columns, building, totalCost = 0 }: Bui
         <button onClick={() => setShowCostHeatmap(!showCostHeatmap)}
           className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all shadow-sm ${showCostHeatmap ? 'bg-emerald-600 text-white' : 'bg-white/85 backdrop-blur-sm text-text-muted hover:text-text'}`}>
           💰 5D Maliyet
+        </button>
+        <button onClick={() => {
+          setWalkMode(!walkMode)
+          if (!walkMode) {
+            // Walk-through: zemin kat iç mekan kamerası
+            setTargetPreset({
+              id: 'walkthrough',
+              name: 'Walk-through',
+              position: [building.width / 2, 1.7, building.depth / 2],
+              target: [building.width / 2 + 2, 1.7, building.depth / 2],
+              fov: 75,
+              icon: '🚶',
+            })
+          }
+        }}
+          className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all shadow-sm ${walkMode ? 'bg-blue-600 text-white' : 'bg-white/85 backdrop-blur-sm text-text-muted hover:text-text'}`}>
+          🚶 Walk-through
         </button>
         {(showCostHeatmap || show4D) && totalCost > 0 && (
           <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-lg px-3 py-1.5 text-xs font-bold text-emerald-700">
