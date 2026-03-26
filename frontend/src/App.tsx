@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
 import { WizardLayout } from '@/components/layout/WizardLayout'
 import { ParcelStep } from '@/components/parcel/ParcelStep'
 import { ZoningStep } from '@/components/zoning/ZoningStep'
@@ -12,6 +12,7 @@ import { LegalPages } from '@/components/legal/LegalPages'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { ToastContainer } from '@/components/ui/ToastContainer'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
+import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard'
 import { useProjectStore } from '@/stores/projectStore'
 import { useProjectListStore } from '@/stores/projectListStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -19,7 +20,12 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { toast } from '@/stores/toastStore'
 import { Loader2 } from 'lucide-react'
 
-type AppView = 'landing' | 'auth' | 'projects' | 'wizard' | 'legal'
+// Lazy load admin dashboard (code splitting)
+const AdminDashboard = lazy(() =>
+  import('@/components/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard }))
+)
+
+type AppView = 'landing' | 'auth' | 'projects' | 'wizard' | 'legal' | 'admin'
 
 function WizardRouter() {
   const { currentStep } = useProjectStore()
@@ -39,6 +45,7 @@ function AppContent() {
   const { currentProjectId, serialize, markSaved, isDirty } = useProjectStore()
   const { updateProject } = useProjectListStore()
   const [view, setView] = useState<AppView>('landing')
+  const [showOnboarding, setShowOnboarding] = useState(false)
 
   // Initialize auth + settings
   useEffect(() => {
@@ -46,10 +53,19 @@ function AppContent() {
     loadFromStorage()
   }, [initialize, loadFromStorage])
 
-  // Set view based on auth state (only if not on landing)
+  // Set view based on auth state — check onboarding
   useEffect(() => {
-    if (!loading && view !== 'landing') {
-      setView(user ? 'projects' : 'auth')
+    if (!loading && view !== 'landing' && view !== 'legal') {
+      if (user) {
+        // Onboarding kontrolü — ilk girişte göster
+        const onboardingDone = localStorage.getItem('imar-pro-onboarding-done')
+        if (!onboardingDone) {
+          setShowOnboarding(true)
+        }
+        setView('projects')
+      } else {
+        setView('auth')
+      }
     }
   }, [user, loading, view])
 
@@ -149,7 +165,47 @@ function AppContent() {
 
   // Projects dashboard
   if (view === 'projects') {
-    return <ProjectsDashboard onOpenProject={() => setView('wizard')} />
+    return (
+      <>
+        {showOnboarding && (
+          <OnboardingWizard
+            onComplete={() => {
+              setShowOnboarding(false)
+              localStorage.setItem('imar-pro-onboarding-done', 'true')
+            }}
+            onSkip={() => {
+              setShowOnboarding(false)
+              localStorage.setItem('imar-pro-onboarding-done', 'true')
+            }}
+          />
+        )}
+        <ProjectsDashboard
+          onOpenProject={() => setView('wizard')}
+          onOpenAdmin={() => setView('admin')}
+        />
+      </>
+    )
+  }
+
+  // Admin Dashboard
+  if (view === 'admin') {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <div className="bg-white border-b px-4 py-3 flex items-center justify-between">
+          <button onClick={() => setView('projects')} className="text-sm text-sky-600 hover:text-sky-800 font-medium">
+            ← Projelere Dön
+          </button>
+          <span className="text-sm text-slate-500">imarPRO Admin</span>
+        </div>
+        <Suspense fallback={
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 animate-spin text-sky-600" />
+          </div>
+        }>
+          <AdminDashboard />
+        </Suspense>
+      </div>
+    )
   }
 
   // Wizard

@@ -815,3 +815,69 @@ class TestPDFDeep:
         })
         assert r.status_code == 200
         assert len(r.content) > 15000  # Genişletilmiş PDF en az 15KB
+
+
+# ══════════════════════════════════════
+# 19. SaaS API (demo mod)
+# ══════════════════════════════════════
+
+class TestSaaS:
+    def test_profile_no_auth(self, client):
+        """Auth olmadan profil → 401."""
+        r = client.get("/api/user/profile")
+        assert r.status_code == 401
+
+    def test_profile_demo(self, client):
+        """Demo user ile profil."""
+        r = client.get("/api/user/profile", headers={"X-Demo-User-Id": "test-123"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["plan"] == "free"
+        assert data["max_projects"] == 3
+
+    def test_usage_demo(self, client):
+        """Demo kullanım istatistikleri."""
+        r = client.get("/api/user/usage", headers={"X-Demo-User-Id": "test-123"})
+        assert r.status_code == 200
+        data = r.json()
+        assert "projects" in data
+        assert "ai_calls" in data
+
+    def test_notifications_demo(self, client):
+        r = client.get("/api/notifications", headers={"X-Demo-User-Id": "test-123"})
+        assert r.status_code == 200
+        data = r.json()
+        assert "notifications" in data
+        assert "unread_count" in data
+
+    def test_admin_dashboard_demo(self, client):
+        r = client.get("/api/admin/dashboard", headers={"X-Demo-User-Id": "admin-1"})
+        assert r.status_code == 200
+        data = r.json()
+        assert "total_users" in data
+        assert "plan_distribution" in data
+
+    def test_org_create_demo(self, client):
+        r = client.post("/api/org/create",
+            json={"name": "Test Şirketi", "slug": "test-sirketi"},
+            headers={"X-Demo-User-Id": "test-123"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["success"] is True
+        assert data["slug"] == "test-sirketi"
+
+    def test_org_list_demo(self, client):
+        r = client.get("/api/org/list", headers={"X-Demo-User-Id": "test-123"})
+        assert r.status_code == 200
+
+    def test_share_link_demo(self, client):
+        r = client.post("/api/project/fake-id/share-link",
+            headers={"X-Demo-User-Id": "test-123"})
+        assert r.status_code == 200
+        data = r.json()
+        assert "token" in data
+
+    def test_mark_notifications_read(self, client):
+        r = client.put("/api/notifications/read-all",
+            headers={"X-Demo-User-Id": "test-123"})
+        assert r.status_code == 200

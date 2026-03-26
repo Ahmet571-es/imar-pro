@@ -26,6 +26,7 @@ from routers.export_router import router as export_router
 from routers.level6_router import router as level6_router
 from routers.admin_router import router as admin_router
 from routers.bim_router import router as bim_router
+from routers.saas_router import router as saas_router
 from middleware import RateLimitMiddleware, RequestLoggerMiddleware, setup_sentry
 
 VERSION = "2.1.0"
@@ -102,6 +103,7 @@ app.include_router(export_router)
 app.include_router(level6_router)
 app.include_router(admin_router)
 app.include_router(bim_router)
+app.include_router(saas_router)
 
 
 @app.get("/")

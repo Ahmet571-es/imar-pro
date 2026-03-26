@@ -8,11 +8,12 @@ import { toast } from '@/stores/toastStore'
 import { ProjectComparison } from './ProjectComparison'
 import {
   Plus, FolderOpen, Trash2, Clock, MapPin, Loader2, Building2, LogOut, User,
-  Settings, CheckCircle2, Layers, GitCompare,
+  Settings, CheckCircle2, Layers, GitCompare, BarChart3,
 } from 'lucide-react'
 
 interface Props {
   onOpenProject: () => void
+  onOpenAdmin?: () => void
 }
 
 function getProjectSummary(data: Record<string, unknown>): string {
@@ -31,7 +32,7 @@ function getCompletedCount(data: Record<string, unknown>): number {
   return steps?.length || 0
 }
 
-export function ProjectsDashboard({ onOpenProject }: Props) {
+export function ProjectsDashboard({ onOpenProject, onOpenAdmin }: Props) {
   const { user, signOut, isDemo } = useAuthStore()
   const { projects, loadingProjects, fetchProjects, saveProject, deleteProject } = useProjectListStore()
   const projectStore = useProjectStore()
@@ -134,6 +135,15 @@ export function ProjectsDashboard({ onOpenProject }: Props) {
             >
               <Settings className="w-4 h-4 text-white/70" />
             </button>
+            {onOpenAdmin && (
+              <button
+                onClick={onOpenAdmin}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                title="Admin Panel"
+              >
+                <BarChart3 className="w-4 h-4 text-white/70" />
+              </button>
+            )}
             <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-1.5">
               <User className="w-4 h-4 text-white/60" />
               <span className="text-sm">{user?.name || user?.email}</span>
