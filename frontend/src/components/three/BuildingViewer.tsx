@@ -5,7 +5,7 @@
  * interaktivite, export.
  */
 
-import { useRef, useState, useMemo, useCallback, Suspense, useEffect } from 'react'
+import React, { useRef, useState, useMemo, useCallback, Suspense, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
 import * as THREE from 'three'
 
@@ -18,8 +18,9 @@ import {
 } from './types3d'
 
 import {
-  Wall, WindowMesh, DoorMesh, FloorSlab, Column,
+  Wall, WindowMesh, DoorMesh, FloorSlab, Column, Beam,
   Roof, Foundation, EntranceSteps, SectionPlane,
+  Staircase, BalconyRailing,
   get4DOpacity, getCostHeatmapColor,
 } from './BuildingGeometry'
 
@@ -195,8 +196,8 @@ function BuildingScene({
                     <WindowMesh
                       key={`win-${wi}`}
                       win={win}
-                      glassMaterial={materials.glass}
-                      frameMaterial={materials.windowFrame}
+                      glassMat={materials.glass}
+                      frameMat={materials.windowFrame}
                       viewMode={viewMode}
                     />
                   ))}
@@ -248,8 +249,80 @@ function BuildingScene({
           col={col}
           viewMode={viewMode}
           opacity={viewMode === 'xray' ? 0.4 : 0.8}
+          showLabels={showColumns}
         />
       ))}
+
+      {/* Beams — kolon arası kirişler (her kat seviyesinde) */}
+      {showColumns && viewMode !== 'wireframe' && columns.length > 1 && floors.map((floor) => {
+        const beamY = floor.floor_y + building.floor_height
+        const beams: React.JSX.Element[] = []
+        // Yatay kirişler (x yönü) — aynı z'deki kolonlar arası
+        const zGroups: Record<string, typeof columns> = {}
+        for (const col of columns) {
+          const key = col.z.toFixed(1)
+          if (!zGroups[key]) zGroups[key] = []
+          zGroups[key].push(col)
+        }
+        for (const group of Object.values(zGroups)) {
+          const sorted = [...group].sort((a, b) => a.x - b.x)
+          for (let i = 0; i < sorted.length - 1; i++) {
+            beams.push(
+              <Beam key={`bx-${floor.floor_index}-${i}-${sorted[i].z}`}
+                from={{ x: sorted[i].x, z: sorted[i].z }}
+                to={{ x: sorted[i + 1].x, z: sorted[i + 1].z }}
+                y={beamY} width={0.25} height={0.45} viewMode={viewMode} />,
+            )
+          }
+        }
+        // Dikey kirişler (z yönü)
+        const xGroups: Record<string, typeof columns> = {}
+        for (const col of columns) {
+          const key = col.x.toFixed(1)
+          if (!xGroups[key]) xGroups[key] = []
+          xGroups[key].push(col)
+        }
+        for (const group of Object.values(xGroups)) {
+          const sorted = [...group].sort((a, b) => a.z - b.z)
+          for (let i = 0; i < sorted.length - 1; i++) {
+            beams.push(
+              <Beam key={`bz-${floor.floor_index}-${i}-${sorted[i].x}`}
+                from={{ x: sorted[i].x, z: sorted[i].z }}
+                to={{ x: sorted[i + 1].x, z: sorted[i + 1].z }}
+                y={beamY} width={0.25} height={0.45} viewMode={viewMode} />,
+            )
+          }
+        }
+        return <group key={`beams-${floor.floor_index}`}>{beams}</group>
+      })}
+
+      {/* Staircase — merdiven kovası (bina sağ arka köşe) */}
+      {viewMode !== 'wireframe' && (!show4D || constructionMonth >= 4) && (
+        <Staircase
+          position={[building.width - 3.2, 0, building.depth - 4.5]}
+          floorHeight={building.floor_height}
+          width={2.8}
+          depth={4.0}
+          viewMode={viewMode}
+        />
+      )}
+
+      {/* Balcony railings — plan verisinden balkon odalarına korkuluk */}
+      {viewMode !== 'wireframe' && floors.map((floor) =>
+        floor.rooms
+          .filter(r => r.type === 'balkon')
+          .map((balkon, bi) => (
+            <BalconyRailing
+              key={`balcony-${floor.floor_index}-${bi}`}
+              x={balkon.position.x}
+              y={floor.floor_y + 0.05}
+              z={balkon.position.z}
+              width={balkon.dimensions.width}
+              depth={balkon.dimensions.depth}
+              viewMode={viewMode}
+            />
+          )),
+      )}
 
       <Roof
         building={building}

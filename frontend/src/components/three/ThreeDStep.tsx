@@ -10,11 +10,12 @@ import { useProjectStore } from '@/stores/projectStore'
 import { toast } from '@/stores/toastStore'
 import { getBuildingData, generateRoomRender, generateExteriorRender } from '@/services/api'
 import { WhatIfPanel } from './WhatIfPanel'
+import { BOQPanel } from './BOQPanel'
 import { cn } from '@/lib/utils'
 import {
   Box, ArrowLeft, ArrowRight, Loader2, TriangleAlert,
   Camera, Image, Palette, RefreshCw, Download, Layers,
-  Play, Grid3x3, Calculator, Building2,
+  Play, Grid3x3, Calculator, Building2, ClipboardList,
 } from 'lucide-react'
 import type { Floor3D, ColumnData, BuildingInfo, MaterialDef, RenderItem } from './types3d'
 import { RENDER_STYLES } from './types3d'
@@ -56,7 +57,7 @@ export function ThreeDStep() {
 
   const [buildingData, setBuildingData] = useState<BuildingData | null>(null)
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'3d' | 'render' | 'whatif'>('3d')
+  const [activeTab, setActiveTab] = useState<'3d' | 'render' | 'whatif' | 'boq'>('3d')
 
   // Render gallery state
   const [renderStyle, setRenderStyle] = useState('modern_turk')
@@ -316,7 +317,12 @@ export function ThreeDStep() {
         <button onClick={() => setActiveTab('whatif')}
           className={cn('flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all',
             activeTab === 'whatif' ? 'bg-white text-primary shadow-sm' : 'text-text-muted hover:text-text')}>
-          <Calculator className="w-4 h-4" /> What-If Analiz
+          <Calculator className="w-4 h-4" /> What-If
+        </button>
+        <button onClick={() => setActiveTab('boq')}
+          className={cn('flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all',
+            activeTab === 'boq' ? 'bg-white text-primary shadow-sm' : 'text-text-muted hover:text-text')}>
+          <ClipboardList className="w-4 h-4" /> Metraj
         </button>
       </div>
 
@@ -622,6 +628,21 @@ export function ThreeDStep() {
               maliyet etkisini anında hesaplayabilirsiniz.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* BOQ (Metraj) Tab */}
+      {activeTab === 'boq' && buildingData && (
+        <BOQPanel
+          building={buildingData.building}
+          floors={buildingData.floors}
+          columns={buildingData.columns}
+          totalCost={totalCost}
+        />
+      )}
+      {activeTab === 'boq' && !buildingData && (
+        <div className="bg-white rounded-xl border border-border p-8 text-center text-text-muted">
+          3D model yüklenmeden metraj hesaplanamaz.
         </div>
       )}
 
