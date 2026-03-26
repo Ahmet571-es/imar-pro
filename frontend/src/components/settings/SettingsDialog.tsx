@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { toast } from '@/stores/toastStore'
-import { X, Key, Eye, EyeOff, Trash2, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react'
+import { X, Key, Eye, EyeOff, Trash2, CheckCircle2, AlertCircle, Sparkles, Loader2, Zap } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 
 export function SettingsDialog() {
@@ -13,6 +13,70 @@ export function SettingsDialog() {
 
   const [showClaude, setShowClaude] = useState(false)
   const [showGrok, setShowGrok] = useState(false)
+  const [testingClaude, setTestingClaude] = useState(false)
+  const [testingGrok, setTestingGrok] = useState(false)
+  const [claudeStatus, setClaudeStatus] = useState<'idle' | 'ok' | 'fail'>('idle')
+  const [grokStatus, setGrokStatus] = useState<'idle' | 'ok' | 'fail'>('idle')
+
+  // API key test — Claude
+  const testClaudeKey = useCallback(async () => {
+    if (!claudeApiKey) return
+    setTestingClaude(true)
+    setClaudeStatus('idle')
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': claudeApiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'ping' }],
+        }),
+      })
+      if (res.ok || res.status === 200) {
+        setClaudeStatus('ok')
+        toast.success('Claude API', 'Bağlantı başarılı — claude-sonnet-4 aktif')
+      } else {
+        const err = await res.json().catch(() => ({}))
+        setClaudeStatus('fail')
+        toast.error('Claude API', (err as Record<string, Record<string, string>>)?.error?.message || `HTTP ${res.status}`)
+      }
+    } catch (e: unknown) {
+      setClaudeStatus('fail')
+      toast.error('Claude API', e instanceof Error ? e.message : 'Bağlantı hatası')
+    } finally {
+      setTestingClaude(false)
+    }
+  }, [claudeApiKey])
+
+  // API key test — Grok
+  const testGrokKey = useCallback(async () => {
+    if (!grokApiKey) return
+    setTestingGrok(true)
+    setGrokStatus('idle')
+    try {
+      const res = await fetch('https://api.x.ai/v1/models', {
+        headers: { 'Authorization': `Bearer ${grokApiKey}` },
+      })
+      if (res.ok) {
+        setGrokStatus('ok')
+        toast.success('Grok API', 'Bağlantı başarılı — grok-4 + grok-2-image aktif')
+      } else {
+        setGrokStatus('fail')
+        toast.error('Grok API', `HTTP ${res.status} — Geçersiz anahtar`)
+      }
+    } catch (e: unknown) {
+      setGrokStatus('fail')
+      toast.error('Grok API', e instanceof Error ? e.message : 'Bağlantı hatası')
+    } finally {
+      setTestingGrok(false)
+    }
+  }, [grokApiKey])
 
   if (!isSettingsOpen) return null
 
@@ -100,7 +164,16 @@ export function SettingsDialog() {
                   )}
                 </button>
               </div>
-              <p className="text-[11px] text-text-light mt-1.5">Plan üretimi, cross-review ve fizibilite yorumu için kullanılır</p>
+              <p className="text-[11px] text-text-light mt-1.5">
+                Model: <span className="font-mono">claude-sonnet-4-20250514</span> — Plan üretimi, cross-review, fizibilite yorumu
+              </p>
+              {hasClaudeKey() && (
+                <button onClick={testClaudeKey} disabled={testingClaude}
+                  className="mt-2 flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium transition-colors">
+                  {testingClaude ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                  {testingClaude ? 'Test ediliyor...' : claudeStatus === 'ok' ? '✅ Bağlantı başarılı' : claudeStatus === 'fail' ? '❌ Başarısız — tekrar test et' : 'Bağlantıyı Test Et'}
+                </button>
+              )}
             </div>
 
             {/* Grok API Key */}
@@ -133,7 +206,16 @@ export function SettingsDialog() {
                   )}
                 </button>
               </div>
-              <p className="text-[11px] text-text-light mt-1.5">Plan üretimi, cross-review ve fotogerçekçi render için kullanılır</p>
+              <p className="text-[11px] text-text-light mt-1.5">
+                Modeller: <span className="font-mono">grok-4-0620</span> (plan) + <span className="font-mono">grok-2-image</span> (render)
+              </p>
+              {hasGrokKey() && (
+                <button onClick={testGrokKey} disabled={testingGrok}
+                  className="mt-2 flex items-center gap-1.5 text-xs text-purple-600 hover:text-purple-500 font-medium transition-colors">
+                  {testingGrok ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                  {testingGrok ? 'Test ediliyor...' : grokStatus === 'ok' ? '✅ Bağlantı başarılı' : grokStatus === 'fail' ? '❌ Başarısız — tekrar test et' : 'Bağlantıyı Test Et'}
+                </button>
+              )}
             </div>
 
             {/* Status Summary */}

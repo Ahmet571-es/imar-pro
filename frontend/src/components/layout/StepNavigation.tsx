@@ -18,9 +18,19 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 export function StepNavigation() {
   const { currentStep, setStep, completedSteps } = useProjectStore()
 
+  const completionPercent = Math.round((completedSteps.size / STEPS.length) * 100)
+
   return (
-    <nav className="w-full bg-white border-b border-border px-4 py-3">
-      <div className="max-w-6xl mx-auto flex items-center gap-1">
+    <nav className="w-full bg-white border-b border-border">
+      {/* Progress bar */}
+      <div className="h-0.5 bg-border/30">
+        <div
+          className="h-full bg-success transition-all duration-500 ease-out"
+          style={{ width: `${completionPercent}%` }}
+        />
+      </div>
+      <div className="px-4 py-3">
+        <div className="max-w-6xl mx-auto flex items-center gap-1">
         {STEPS.map((step, i) => {
           const Icon = ICON_MAP[step.icon]
           const isActive = currentStep === step.id
@@ -72,6 +82,18 @@ export function StepNavigation() {
             </div>
           )
         })}
+        </div>
+        {/* Completion % */}
+        {completionPercent > 0 && completionPercent < 100 && (
+          <div className="ml-2 text-[10px] text-text-muted font-mono shrink-0">
+            %{completionPercent}
+          </div>
+        )}
+        {completionPercent === 100 && (
+          <div className="ml-2 text-[10px] text-success font-semibold shrink-0">
+            ✓ Tamamlandı
+          </div>
+        )}
       </div>
     </nav>
   )

@@ -115,6 +115,53 @@ export function PlanRadarChart({ plans }: Props) {
           </div>
         ))}
       </div>
+
+      {/* Dimension comparison table */}
+      {plans.length >= 2 && (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-[10px]">
+            <thead>
+              <tr className="border-b border-border/50">
+                <th className="text-left py-1 pr-2 font-semibold text-text-muted">Boyut</th>
+                {plans.map((p, i) => (
+                  <th key={i} className="text-center py-1 px-1 font-semibold" style={{ color: PLAN_COLORS[i % PLAN_COLORS.length] }}>
+                    {p.plan_name}
+                  </th>
+                ))}
+                <th className="text-center py-1 px-1 font-semibold text-text-muted">En İyi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dimensions.map((dimKey) => {
+                const scores = plans.map(p => {
+                  const raw = p.score?.[dimKey] || '0'
+                  return parseFloat(raw.replace('/100', ''))
+                })
+                const maxScore = Math.max(...scores)
+                const label = DIMENSION_LABELS[dimKey] || dimKey
+
+                return (
+                  <tr key={dimKey} className="border-b border-border/20 hover:bg-surface-alt/50">
+                    <td className="py-1 pr-2 text-text-muted">{label}</td>
+                    {scores.map((score, i) => (
+                      <td key={i} className="text-center py-1 px-1 font-mono">
+                        <span className={`inline-block min-w-[32px] px-1 py-0.5 rounded ${score === maxScore && maxScore > 0 ? 'bg-emerald-50 text-emerald-700 font-semibold' : ''}`}>
+                          {isNaN(score) ? '-' : score.toFixed(1)}
+                        </span>
+                      </td>
+                    ))}
+                    <td className="text-center py-1 px-1">
+                      {maxScore > 0 && (
+                        <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: PLAN_COLORS[scores.indexOf(maxScore) % PLAN_COLORS.length] }} />
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
