@@ -8,6 +8,7 @@ import { FeasibilityStep } from '@/components/feasibility/FeasibilityStep'
 import { AuthPage } from '@/components/auth/AuthPage'
 import { ProjectsDashboard } from '@/components/projects/ProjectsDashboard'
 import { LandingPage } from '@/components/landing/LandingPage'
+import { LegalPages } from '@/components/legal/LegalPages'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { ToastContainer } from '@/components/ui/ToastContainer'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
@@ -18,7 +19,7 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { toast } from '@/stores/toastStore'
 import { Loader2 } from 'lucide-react'
 
-type AppView = 'landing' | 'auth' | 'projects' | 'wizard'
+type AppView = 'landing' | 'auth' | 'projects' | 'wizard' | 'legal'
 
 function WizardRouter() {
   const { currentStep } = useProjectStore()
@@ -131,9 +132,14 @@ function AppContent() {
     )
   }
 
+  // Legal pages
+  if (view === 'legal') {
+    return <LegalPages onBack={() => setView('landing')} />
+  }
+
   // Landing page
   if (view === 'landing') {
-    return <LandingPage onGetStarted={() => setView(user ? 'projects' : 'auth')} />
+    return <LandingPage onGetStarted={() => setView(user ? 'projects' : 'auth')} onLegal={() => setView('legal')} />
   }
 
   // Auth

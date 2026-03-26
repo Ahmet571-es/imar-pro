@@ -7,6 +7,7 @@ import {
 
 interface Props {
   onGetStarted: () => void
+  onLegal?: () => void
 }
 
 // ── Animated building silhouette (SVG) ──
@@ -180,7 +181,7 @@ const STATS = [
   { value: '6', label: 'Görünüm Modu' },
 ]
 
-export function LandingPage({ onGetStarted }: Props) {
+export function LandingPage({ onGetStarted, onLegal }: Props) {
   const [currentSlide, setCurrentSlide] = useState(0)
   const slideTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
 
@@ -407,14 +408,22 @@ export function LandingPage({ onGetStarted }: Props) {
 
       {/* ── Footer ── */}
       <footer className="py-6 sm:py-8 px-4 sm:px-6 bg-primary-dark/95 border-t border-white/5">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 bg-accent rounded-lg flex items-center justify-center font-bold text-primary-dark text-[10px]">iP</div>
             <span className="text-xs text-white/40">imarPRO — Gayrimenkul Fizibilite & AI Kat Planı Platformu</span>
           </div>
-          <p className="text-xs text-white/30">
-            © {new Date().getFullYear()} imarPRO. Tüm hakları saklıdır.
-          </p>
+          <div className="flex items-center gap-4 text-xs text-white/30">
+            {onLegal && (
+              <>
+                <button onClick={onLegal} className="hover:text-white/60 transition-colors">KVKK</button>
+                <button onClick={onLegal} className="hover:text-white/60 transition-colors">Gizlilik</button>
+                <button onClick={onLegal} className="hover:text-white/60 transition-colors">Kullanım Şartları</button>
+                <span className="hidden sm:inline">|</span>
+              </>
+            )}
+            <span>© {new Date().getFullYear()} imarPRO</span>
+          </div>
         </div>
       </footer>
 

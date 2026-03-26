@@ -233,3 +233,54 @@ def setup_sentry(dsn: str | None = None):
     except Exception as e:
         logger.warning(f"Sentry başlatma hatası: {e}")
         return False
+
+
+# ══════════════════════════════════════
+# 4. SUPABASE JWT VERIFICATION
+# ══════════════════════════════════════
+
+_SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
+
+
+def verify_supabase_token(authorization: str | None) -> dict | None:
+    """Supabase JWT token'ını doğrular.
+
+    Returns:
+        Token payload (user_id, email vb.) veya None (geçersiz/eksik).
+
+    Kullanım (router'da):
+        user = verify_supabase_token(request.headers.get("Authorization"))
+        if not user:
+            raise HTTPException(401, "Oturum gerekli")
+    """
+    if not _SUPABASE_JWT_SECRET:
+        return None  # JWT doğrulama kapalı — SUPABASE_JWT_SECRET ayarlanmamış
+
+    if not authorization:
+        return None
+
+    token = authorization.replace("Bearer ", "").strip()
+    if not token:
+        return None
+
+    try:
+        import jwt
+        payload = jwt.decode(
+            token,
+            _SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            audience="authenticated",
+        )
+        return {
+            "user_id": payload.get("sub"),
+            "email": payload.get("email"),
+            "role": payload.get("role", "authenticated"),
+            "exp": payload.get("exp"),
+        }
+    except ImportError:
+        logger.debug("PyJWT yüklü değil — pip install PyJWT")
+        return None
+    except Exception as e:
+        logger.debug(f"JWT doğrulama hatası: {e}")
+        return None
+
