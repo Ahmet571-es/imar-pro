@@ -1,7 +1,6 @@
 User-agent: *
 Allow: /
 Disallow: /api/
-Disallow: /docs
-Disallow: /redoc
+Disallow: /admin
 
-Sitemap: https://imarpro.com/sitemap.xml
+Sitemap: https://frontend-eta-kohl-48.vercel.app/sitemap.xml

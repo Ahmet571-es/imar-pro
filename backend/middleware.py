@@ -331,11 +331,19 @@ _TRACKED_ENDPOINTS = {
     "/api/export/dxf": "dxf_export",
     "/api/bim/export/ifc": "ifc_export",
     "/api/imar/parse-pdf": "imar_pdf_parse",
+    "/api/plan/multi-floor": "multi_floor_plan",
+}
+
+# AI kredisi harcayan endpoint'ler (quota kontrolü yapılır)
+_AI_CREDIT_ENDPOINTS = {
+    "/api/plan/generate", "/api/feasibility/ai-yorum",
+    "/api/render/generate", "/api/render/exterior",
+    "/api/imar/parse-pdf", "/api/plan/multi-floor",
 }
 
 
 class UsageTrackingMiddleware(BaseHTTPMiddleware):
-    """Kullanıcı bazlı kullanım takibi — Supabase'e yazar (varsa)."""
+    """Kullanıcı bazlı kullanım takibi + AI quota kontrolü."""
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Sadece POST ve tracked endpoint'ler
@@ -346,22 +354,61 @@ class UsageTrackingMiddleware(BaseHTTPMiddleware):
         user = verify_supabase_token(request.headers.get("Authorization"))
         demo_id = request.headers.get("X-Demo-User-Id", "")
 
+        # AI quota kontrolü (gerçek kullanıcılar için)
+        if user and request.url.path in _AI_CREDIT_ENDPOINTS:
+            quota_ok = _check_ai_quota(user["user_id"])
+            if not quota_ok:
+                return Response(
+                    content='{"detail":"Aylık AI kullanım limitiniz doldu. Pro plana yükseltin."}',
+                    status_code=429,
+                    media_type="application/json",
+                )
+
         start = time.time()
         response = await call_next(request)
         duration_ms = int((time.time() - start) * 1000)
 
-        # Supabase'e log yaz (async, hata yutulur)
+        # Supabase'e log yaz + AI sayacını artır
         if user and response.status_code == 200:
+            action = _TRACKED_ENDPOINTS[request.url.path]
+            is_ai = request.url.path in _AI_CREDIT_ENDPOINTS
             _log_usage_async(
                 user_id=user["user_id"],
-                action=_TRACKED_ENDPOINTS[request.url.path],
+                action=action,
                 duration_ms=duration_ms,
+                increment_ai=is_ai,
             )
 
         return response
 
 
-def _log_usage_async(user_id: str, action: str, duration_ms: int = 0):
+def _check_ai_quota(user_id: str) -> bool:
+    """AI kullanım kotası kontrolü."""
+    try:
+        supabase_url = os.getenv("SUPABASE_URL", "")
+        service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+        if not supabase_url or not service_key:
+            return True  # Supabase yoksa geçir
+
+        import requests as req
+        resp = req.get(
+            f"{supabase_url}/rest/v1/profiles?id=eq.{user_id}&select=ai_calls_used,max_ai_calls_monthly",
+            headers={"apikey": service_key, "Authorization": f"Bearer {service_key}"},
+            timeout=2,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data:
+                used = data[0].get("ai_calls_used", 0)
+                max_calls = data[0].get("max_ai_calls_monthly", 10)
+                if max_calls > 0 and used >= max_calls:
+                    return False
+        return True
+    except Exception:
+        return True  # Hata durumunda geçir
+
+
+def _log_usage_async(user_id: str, action: str, duration_ms: int = 0, increment_ai: bool = False):
     """Supabase usage_log'a asenkron yaz (hata yutulur)."""
     try:
         supabase_url = os.getenv("SUPABASE_URL", "")
@@ -370,6 +417,7 @@ def _log_usage_async(user_id: str, action: str, duration_ms: int = 0):
             return
 
         import requests as req
+        # Usage log yaz
         req.post(
             f"{supabase_url}/rest/v1/usage_log",
             json={"user_id": user_id, "action": action, "duration_ms": duration_ms},
@@ -381,6 +429,19 @@ def _log_usage_async(user_id: str, action: str, duration_ms: int = 0):
             },
             timeout=2,
         )
+
+        # AI sayacını artır
+        if increment_ai:
+            req.post(
+                f"{supabase_url}/rest/v1/rpc/increment_ai_usage",
+                json={"p_user_id": user_id, "p_action": action, "p_tokens": 0},
+                headers={
+                    "apikey": service_key,
+                    "Authorization": f"Bearer {service_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=2,
+            )
     except Exception:
         pass  # Kullanım logu yazılamazsa sessizce devam et
 

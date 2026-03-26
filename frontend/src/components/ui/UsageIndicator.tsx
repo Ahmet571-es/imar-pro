@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react'
 import { Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { AIUsagePanel } from './AIUsagePanel'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
@@ -27,6 +28,7 @@ interface Props {
 
 export function UsageIndicator({ demoUserId }: Props) {
   const [data, setData] = useState<UsageData | null>(null)
+  const [showPanel, setShowPanel] = useState(false)
 
   useEffect(() => {
     fetchUsage()
@@ -49,20 +51,28 @@ export function UsageIndicator({ demoUserId }: Props) {
     : 0
 
   return (
-    <div className="flex items-center gap-2 bg-white/10 rounded-lg px-2.5 py-1.5">
-      <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white', plan.color)}>
-        {plan.label}
-      </span>
-      <div className="flex items-center gap-1.5" title={`AI: ${data.ai_calls.used}/${data.ai_calls.max}`}>
-        <Zap className="w-3 h-3 text-amber-400" />
-        <div className="w-12 h-1.5 bg-white/20 rounded-full overflow-hidden">
-          <div
-            className={cn('h-full rounded-full transition-all', aiPct > 80 ? 'bg-red-400' : 'bg-amber-400')}
-            style={{ width: `${aiPct}%` }}
-          />
+    <>
+      <button onClick={() => setShowPanel(true)}
+        className="flex items-center gap-2 bg-white/10 rounded-lg px-2.5 py-1.5 hover:bg-white/20 transition"
+        title="Kullanım detayları">
+        <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white', plan.color)}>
+          {plan.label}
+        </span>
+        <div className="flex items-center gap-1.5">
+          <Zap className="w-3 h-3 text-amber-400" />
+          <div className="w-12 h-1.5 bg-white/20 rounded-full overflow-hidden">
+            <div
+              className={cn('h-full rounded-full transition-all', aiPct > 80 ? 'bg-red-400' : 'bg-amber-400')}
+              style={{ width: `${aiPct}%` }}
+            />
+          </div>
+          <span className="text-[9px] text-white/60">{data.ai_calls.used}/{data.ai_calls.max}</span>
         </div>
-        <span className="text-[9px] text-white/60">{data.ai_calls.used}/{data.ai_calls.max}</span>
-      </div>
-    </div>
+      </button>
+
+      {showPanel && (
+        <AIUsagePanel onClose={() => setShowPanel(false)} demoUserId={demoUserId} />
+      )}
+    </>
   )
 }

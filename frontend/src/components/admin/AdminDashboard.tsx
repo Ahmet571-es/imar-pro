@@ -195,6 +195,98 @@ export function AdminDashboard() {
           )}
         </div>
       </div>
+
+      {/* System Health + Audit Log */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <SystemHealthWidget />
+        <AuditLogWidget />
+      </div>
+    </div>
+  )
+}
+
+// ── System Health Widget ──
+function SystemHealthWidget() {
+  const [health, setHealth] = useState<Record<string, unknown> | null>(null)
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/system/health`)
+      .then(r => r.json()).then(setHealth).catch(() => {})
+  }, [])
+
+  if (!health) return null
+
+  const items = [
+    { key: 'API', ok: health.api === 'ok' },
+    { key: 'Supabase', ok: health.supabase_connected },
+    { key: 'Auth', ok: health.auth_working },
+    { key: 'Tablolar', ok: health.tables_ok },
+  ]
+
+  return (
+    <div className="bg-white rounded-xl border p-4">
+      <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+        <Activity className="w-4 h-4 text-green-600" /> Sistem Sağlığı
+      </h3>
+      <div className="space-y-2">
+        {items.map(item => (
+          <div key={item.key} className="flex items-center justify-between text-sm py-1">
+            <span className="text-slate-600">{item.key}</span>
+            <span className={item.ok ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+              {item.ok ? '✓ Çalışıyor' : '✗ Sorun'}
+            </span>
+          </div>
+        ))}
+      </div>
+      {health.uptime_seconds != null && (
+        <div className="text-xs text-slate-400 mt-3 pt-2 border-t">
+          Uptime: {Math.floor(Number(health.uptime_seconds) / 3600)}s {Math.floor((Number(health.uptime_seconds) % 3600) / 60)}dk
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Audit Log Widget ──
+function AuditLogWidget() {
+  const [logs, setLogs] = useState<{ action: string; user_id: string; created_at: string; duration_ms: number }[]>([])
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/admin/audit`, {
+      headers: { 'X-Demo-User-Id': 'admin-1', 'Content-Type': 'application/json' },
+    }).then(r => r.json()).then(d => setLogs(d.logs || [])).catch(() => {})
+  }, [])
+
+  const ACTION_COLORS: Record<string, string> = {
+    plan_generate: 'bg-violet-100 text-violet-700',
+    ai_review: 'bg-sky-100 text-sky-700',
+    pdf_export: 'bg-green-100 text-green-700',
+    ifc_export: 'bg-amber-100 text-amber-700',
+    render_room: 'bg-pink-100 text-pink-700',
+  }
+
+  return (
+    <div className="bg-white rounded-xl border p-4">
+      <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+        <Shield className="w-4 h-4 text-violet-600" /> Denetim Kaydı
+      </h3>
+      {logs.length > 0 ? (
+        <div className="space-y-1.5 max-h-[220px] overflow-y-auto">
+          {logs.slice(0, 20).map((log, i) => (
+            <div key={i} className="flex items-center justify-between text-xs py-1.5 border-b border-slate-50 last:border-0">
+              <div className="flex items-center gap-2">
+                <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium', ACTION_COLORS[log.action] || 'bg-slate-100 text-slate-600')}>
+                  {log.action}
+                </span>
+                {log.duration_ms > 0 && <span className="text-slate-400">{log.duration_ms}ms</span>}
+              </div>
+              <span className="text-slate-400">{new Date(log.created_at).toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center text-slate-400 text-sm py-8">Henüz kayıt yok</div>
+      )}
     </div>
   )
 }
