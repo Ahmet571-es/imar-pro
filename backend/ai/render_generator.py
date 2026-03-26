@@ -100,15 +100,17 @@ def generate_exterior_render(
     building_floors: int,
     building_style: str = "modern_turk",
     api_key: str = "",
+    direction_prompt: str = "front facade view from street level, south-facing",
 ) -> RenderResult:
-    """Dış cephe render üretir."""
+    """Dış cephe render üretir — 4 yön desteği."""
     result = RenderResult(room_name="Dış Cephe", style=building_style)
     style_info = RENDER_STYLES.get(building_style, RENDER_STYLES["modern_turk"])
 
     prompt = (
         f"Photorealistic exterior architectural visualization of a {building_floors}-story "
-        f"Turkish residential apartment building, {style_info['prompt_suffix']}, "
-        f"street-level perspective, landscaping, blue sky, realistic shadows, "
+        f"Turkish residential apartment building, {direction_prompt}, "
+        f"{style_info['prompt_suffix']}, "
+        f"landscaping, blue sky, realistic shadows, "
         f"4K architectural rendering, professional photography"
     )
     result.prompt = prompt

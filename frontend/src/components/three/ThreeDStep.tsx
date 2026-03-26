@@ -1,22 +1,28 @@
 /**
  * imarPRO — ThreeDStep.tsx (Complete Rewrite)
- * Seviye 3 ana sayfa: 3D Model + Render Galerisi sekmeler.
- * Plan verisinden dinamik oda kartları, batch render, 4 stil karşılaştırma.
+ * Seviye 3 ana sayfa: 3D Model + Render Galerisi + What-If sekmeler.
+ * Plan verisinden dinamik oda kartları, batch render, 4 stil karşılaştırma,
+ * dış cephe 4 yön render, render cache, code splitting.
  */
 
-import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
+import { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
 import { toast } from '@/stores/toastStore'
-import { BuildingViewer } from './BuildingViewer'
-import { getBuildingData, generateRoomRender } from '@/services/api'
+import { getBuildingData, generateRoomRender, generateExteriorRender } from '@/services/api'
+import { WhatIfPanel } from './WhatIfPanel'
 import { cn } from '@/lib/utils'
 import {
   Box, ArrowLeft, ArrowRight, Loader2, TriangleAlert,
   Camera, Image, Palette, RefreshCw, Download, Layers,
-  Play, Grid3x3,
+  Play, Grid3x3, Calculator, Building2,
 } from 'lucide-react'
 import type { Floor3D, ColumnData, BuildingInfo, MaterialDef, RenderItem } from './types3d'
 import { RENDER_STYLES } from './types3d'
+
+// ── Code Splitting: Lazy load BuildingViewer (Three.js heavy) ──
+const BuildingViewer = lazy(() =>
+  import('./BuildingViewer').then(m => ({ default: m.BuildingViewer }))
+)
 
 // ── Backend response shape ──
 interface BuildingData {
@@ -50,7 +56,7 @@ export function ThreeDStep() {
 
   const [buildingData, setBuildingData] = useState<BuildingData | null>(null)
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'3d' | 'render'>('3d')
+  const [activeTab, setActiveTab] = useState<'3d' | 'render' | 'whatif'>('3d')
 
   // Render gallery state
   const [renderStyle, setRenderStyle] = useState('modern_turk')
@@ -59,6 +65,12 @@ export function ThreeDStep() {
   const [batchProgress, setBatchProgress] = useState(0)
   const [compareMode, setCompareMode] = useState(false)
   const [compareRoom, setCompareRoom] = useState<string | null>(null)
+
+  // Exterior render state
+  const [exteriorRenders, setExteriorRenders] = useState<Record<string, RenderItem>>({})
+
+  // Render cache — load from store on mount
+  const { renderCache, setRenderCache } = useProjectStore()
 
   // Get plan rooms from store, fallback to demo
   const planRooms = useMemo(() => {
@@ -104,6 +116,7 @@ export function ThreeDStep() {
           rooms,
           kat_adedi: imarParams.kat_adedi,
           kat_yuksekligi: 3.0,
+          toplam_maliyet: totalCost,
           buildable_width: hesaplama.cekme_polygon_coords
             ? Math.max(...hesaplama.cekme_polygon_coords.map((c) => c.x)) - Math.min(...hesaplama.cekme_polygon_coords.map((c) => c.x))
             : parselData.bounds.width - imarParams.on_bahce - imarParams.arka_bahce,
@@ -193,6 +206,75 @@ export function ThreeDStep() {
     }
   }, [handleRender])
 
+  // Exterior render — 4 directions
+  const handleExteriorRender = useCallback(async (direction: string) => {
+    setExteriorRenders(prev => ({
+      ...prev,
+      [direction]: { room_name: `Dış Cephe (${direction})`, room_type: 'exterior', style: renderStyle, image_url: '', prompt: '', loading: true, error: '' },
+    }))
+
+    try {
+      const result = await generateExteriorRender({
+        kat_adedi: imarParams.kat_adedi,
+        style: renderStyle,
+        direction,
+        bina_genisligi: buildingData?.building?.width || 14,
+        bina_derinligi: buildingData?.building?.depth || 10,
+      }) as { image_url: string; prompt: string; success: boolean; error: string }
+
+      setExteriorRenders(prev => ({
+        ...prev,
+        [direction]: { ...prev[direction], loading: false, image_url: result.image_url, prompt: result.prompt, error: result.error || '' },
+      }))
+      if (result.image_url) {
+        toast.success('Dış Cephe', `${direction} cephe render'ı hazır`)
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Render hatası'
+      setExteriorRenders(prev => ({
+        ...prev,
+        [direction]: { ...prev[direction], loading: false, error: msg },
+      }))
+    }
+  }, [imarParams, buildingData, renderStyle])
+
+  // Save renders to store cache when they change
+  useEffect(() => {
+    const completedRenders = renders.filter(r => r.image_url && !r.loading)
+    if (completedRenders.length > 0) {
+      setRenderCache({
+        images: completedRenders.map(r => ({
+          id: `${r.room_name}_${r.style}`,
+          room_name: r.room_name,
+          style: r.style,
+          prompt: r.prompt,
+          image_url: r.image_url,
+          created_at: new Date().toISOString(),
+        })),
+        last_updated: new Date().toISOString(),
+      })
+    }
+  }, [renders, setRenderCache])
+
+  // Load renders from cache on mount
+  useEffect(() => {
+    if (renderCache?.images?.length) {
+      const cachedRenders: RenderItem[] = renderCache.images.map(img => ({
+        room_name: img.room_name || '',
+        room_type: '',
+        style: img.style,
+        image_url: img.image_url,
+        prompt: img.prompt,
+        loading: false,
+        error: '',
+      }))
+      setRenders(prev => {
+        if (prev.length > 0) return prev // don't override if already have renders
+        return cachedRenders
+      })
+    }
+  }, []) // Only on mount
+
   if (!parselData || !hesaplama) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12 text-center">
@@ -230,6 +312,11 @@ export function ThreeDStep() {
           className={cn('flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all',
             activeTab === 'render' ? 'bg-white text-primary shadow-sm' : 'text-text-muted hover:text-text')}>
           <Camera className="w-4 h-4" /> Render Galerisi
+        </button>
+        <button onClick={() => setActiveTab('whatif')}
+          className={cn('flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all',
+            activeTab === 'whatif' ? 'bg-white text-primary shadow-sm' : 'text-text-muted hover:text-text')}>
+          <Calculator className="w-4 h-4" /> What-If Analiz
         </button>
       </div>
 
@@ -426,27 +513,114 @@ export function ThreeDStep() {
             })}
           </div>
 
-          {/* Dış cephe renders */}
+          {/* Dış cephe renders — 4 yön */}
           <div className="bg-white rounded-xl border border-border p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Box className="w-5 h-5 text-primary" />
-              <h3 className="font-semibold text-sm">Dış Cephe Render (Yakında)</h3>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-primary" />
+                <h3 className="font-semibold text-sm">Dış Cephe Render</h3>
+              </div>
+              <button
+                onClick={async () => {
+                  for (const dir of ['south', 'east', 'west', 'bird']) {
+                    await handleExteriorRender(dir)
+                  }
+                }}
+                disabled={Object.values(exteriorRenders).some(r => r.loading)}
+                className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5">
+                {Object.values(exteriorRenders).some(r => r.loading)
+                  ? <Loader2 className="w-3 h-3 animate-spin" />
+                  : <Layers className="w-3 h-3" />
+                }
+                Tümünü Render Et
+              </button>
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              {['Güney Cephe', 'Doğu Cephe', 'Batı Cephe', 'Kuş Bakışı'].map((label) => (
-                <div key={label} className="aspect-[4/3] bg-surface-alt rounded-lg flex items-center justify-center">
-                  <div className="text-center text-text-light text-xs">
-                    <Image className="w-8 h-8 mx-auto mb-1" />
-                    {label}
+              {[
+                { id: 'south', label: 'Güney Cephe', icon: '🏢' },
+                { id: 'east', label: 'Doğu Cephe', icon: '🌅' },
+                { id: 'west', label: 'Batı Cephe', icon: '🌇' },
+                { id: 'bird', label: 'Kuş Bakışı', icon: '🦅' },
+              ].map((dir) => {
+                const render = exteriorRenders[dir.id]
+                return (
+                  <div key={dir.id} className="rounded-lg overflow-hidden border border-border group">
+                    <div className="aspect-[4/3] bg-surface-alt flex items-center justify-center relative">
+                      {render?.loading && (
+                        <div className="flex flex-col items-center gap-1">
+                          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                          <span className="text-[10px] text-text-muted">Oluşturuluyor...</span>
+                        </div>
+                      )}
+                      {render?.image_url && !render.loading && (
+                        <>
+                          <img src={render.image_url} alt={dir.label} className="w-full h-full object-cover" />
+                          <a href={render.image_url} download={`dis_cephe_${dir.id}.png`}
+                            className="absolute top-1.5 right-1.5 bg-black/50 text-white p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Download className="w-3.5 h-3.5" />
+                          </a>
+                        </>
+                      )}
+                      {render?.error && !render.loading && (
+                        <div className="text-center px-2">
+                          <TriangleAlert className="w-5 h-5 text-warning mx-auto mb-1" />
+                          <p className="text-[10px] text-text-muted">{render.error}</p>
+                        </div>
+                      )}
+                      {!render && (
+                        <div className="flex flex-col items-center gap-1.5 text-text-light">
+                          <span className="text-2xl">{dir.icon}</span>
+                          <span className="text-[10px]">{dir.label}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="px-2 py-1.5 flex items-center justify-between">
+                      <span className="text-xs font-medium">{dir.label}</span>
+                      <button
+                        onClick={() => handleExteriorRender(dir.id)}
+                        disabled={render?.loading}
+                        className="text-primary text-xs hover:underline disabled:opacity-50">
+                        {render?.image_url ? 'Yenile' : 'Render'}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
 
           <div className="bg-surface-alt rounded-xl p-4 text-xs text-text-muted">
             Render üretimi Grok 2 Image API kullanır. Ayarlardan XAI API key girilmesi gereklidir.
             Her render ~10 saniye sürer. Batch render sıralı çalışır.
+          </div>
+        </div>
+      )}
+
+      {/* What-If Tab */}
+      {activeTab === 'whatif' && (
+        <div className="space-y-5">
+          <WhatIfPanel
+            totalCost={totalCost}
+            katAdedi={imarParams.kat_adedi}
+            buildableWidth={buildingData?.building?.width || 14}
+            buildableHeight={buildingData?.building?.depth || 10}
+          />
+
+          {/* 5D explanation */}
+          <div className="bg-surface-alt rounded-xl p-4 text-xs text-text-muted space-y-2">
+            <div className="font-semibold text-text">5D BIM — Maliyet Görselleştirmesi</div>
+            <p>
+              3D modelde "💰 5D Maliyet" butonuna tıklayarak ısı haritası modunu açın.
+              Kırmızı elemanlar en pahalı, yeşil elemanlar en ucuz bölgeleri gösterir.
+            </p>
+            <p>
+              Herhangi bir odaya tıklayarak maliyet detaylarını görüntüleyin.
+              "⏱️ 4D İnşaat" modunda zaman slider'ını sürüklerken kümülatif maliyet güncellenir.
+            </p>
+            <p>
+              Bu panelde yalıtım kalınlığı, pencere tipi veya duvar kalınlığını değiştirerek
+              maliyet etkisini anında hesaplayabilirsiniz.
+            </p>
           </div>
         </div>
       )}

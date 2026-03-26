@@ -80,8 +80,22 @@ export async function getBuildingData(params: Record<string, unknown>) {
   })
 }
 
+export async function whatIfAnalysis(params: Record<string, unknown>) {
+  return request('/api/3d/what-if', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
 export async function generateRoomRender(params: Record<string, unknown>) {
   return request('/api/render/generate', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+export async function generateExteriorRender(params: Record<string, unknown>) {
+  return request('/api/render/exterior', {
     method: 'POST',
     body: JSON.stringify(params),
   })
