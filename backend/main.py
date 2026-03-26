@@ -38,6 +38,9 @@ VERSION = "3.0.0"
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger("imarpro")
 _sentry_active = setup_sentry()
+
+import time as _time_mod
+_start_time = _time_mod.time()
 _rpm = int(os.getenv("RATE_LIMIT_RPM", "120"))
 
 
@@ -129,17 +132,37 @@ async def root():
 async def health():
     """Detaylı sağlık kontrolü — deploy monitoring için."""
     import sys as _sys
+    import os as _os
     from export.pdf_report import FONT_NAME
     from config.afad_ss_s1 import AFAD_81_IL
+
+    # Supabase bağlantı kontrolü
+    supabase_ok = False
+    supabase_url = _os.getenv("SUPABASE_URL", "")
+    if supabase_url:
+        try:
+            from routers.saas_router import _get_supabase
+            sb = _get_supabase()
+            if sb:
+                sb.table("profiles").select("id", count="exact").limit(0).execute()
+                supabase_ok = True
+        except Exception:
+            pass
+
+    # Uptime
+    import time
+    uptime_seconds = int(time.time() - _start_time)
 
     return {
         "status": "ok",
         "version": VERSION,
         "python": _sys.version.split()[0],
+        "uptime_seconds": uptime_seconds,
         "services": {
             "pdf_font": FONT_NAME,
             "afad_iller": len(AFAD_81_IL),
             "sentry": _sentry_active,
             "rate_limit_rpm": _rpm,
+            "supabase": "connected" if supabase_ok else "not_configured" if not supabase_url else "error",
         },
     }

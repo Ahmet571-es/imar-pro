@@ -13,6 +13,7 @@ import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { ToastContainer } from '@/components/ui/ToastContainer'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard'
+import { NetworkStatus } from '@/components/ui/NetworkStatus'
 import { useProjectStore } from '@/stores/projectStore'
 import { useProjectListStore } from '@/stores/projectListStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -219,6 +220,7 @@ function AppContent() {
 export default function App() {
   return (
     <ErrorBoundary>
+      <NetworkStatus />
       <AppContent />
       <ToastContainer />
       <SettingsDialog />

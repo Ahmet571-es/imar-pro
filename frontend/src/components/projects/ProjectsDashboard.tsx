@@ -8,6 +8,8 @@ import { toast } from '@/stores/toastStore'
 import { ProjectComparison } from './ProjectComparison'
 import { NotificationBell } from '@/components/ui/NotificationBell'
 import { UsageIndicator } from '@/components/ui/UsageIndicator'
+import { ProjectCardSkeleton } from '@/components/ui/Skeleton'
+import { EmptyState } from '@/components/ui/EmptyState'
 import {
   Plus, FolderOpen, Trash2, Clock, MapPin, Loader2, Building2, LogOut, User,
   Settings, CheckCircle2, Layers, GitCompare, BarChart3,
@@ -208,23 +210,21 @@ export function ProjectsDashboard({ onOpenProject, onOpenAdmin }: Props) {
 
         {/* Loading */}
         {loadingProjects && (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <ProjectCardSkeleton key={i} />
+            ))}
           </div>
         )}
 
         {/* Empty state */}
         {!loadingProjects && projects.length === 0 && !showNew && (
-          <div className="text-center py-20">
-            <div className="w-20 h-20 rounded-2xl bg-primary/5 flex items-center justify-center mx-auto mb-4">
-              <Building2 className="w-10 h-10 text-primary/40" />
-            </div>
-            <h3 className="text-lg font-semibold text-text mb-1">Henüz projeniz yok</h3>
-            <p className="text-sm text-text-muted mb-6">İlk projenizi oluşturarak başlayın</p>
-            <button onClick={() => setShowNew(true)} className="btn-primary inline-flex items-center gap-2">
-              <Plus className="w-4 h-4" /> İlk Projeni Oluştur
-            </button>
-          </div>
+          <EmptyState
+            icon={<Building2 className="w-8 h-8" />}
+            title="Henüz projeniz yok"
+            description="İlk projenizi oluşturarak parselden fizibiliteye otomatik ilerleyin. AI destekli kat planı üretimi, 3D model ve bankaya sunulabilir rapor — hepsi burada."
+            action={{ label: 'İlk Projeni Oluştur', onClick: () => setShowNew(true) }}
+          />
         )}
 
         {/* Project grid */}
