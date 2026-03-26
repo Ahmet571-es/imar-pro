@@ -100,14 +100,35 @@ def _review_with_grok(plan_info: str, api_key: str) -> dict | None:
     if not api_key:
         return _demo_review()
     try:
-        from openai import OpenAI
-        client = OpenAI(base_url="https://api.x.ai/v1", api_key=api_key)
-        response = client.chat.completions.create(
-            model="grok-4-1-fast-non-reasoning",
-            messages=[{"role": "user", "content": REVIEW_PROMPT.format(plan_info=plan_info)}],
-            max_tokens=1024,
+        import requests as req
+
+        resp = req.post(
+            "https://api.x.ai/v1/responses",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "grok-4.20",
+                "input": [
+                    {"role": "user", "content": REVIEW_PROMPT.format(plan_info=plan_info)},
+                ],
+                "store": False,
+            },
+            timeout=60,
         )
-        text = response.choices[0].message.content.strip()
+        resp.raise_for_status()
+        result = resp.json()
+
+        # Responses API: output dizisinden text al
+        text = ""
+        for block in result.get("output", []):
+            if block.get("type") == "message":
+                for content in block.get("content", []):
+                    if content.get("type") == "output_text":
+                        text += content.get("text", "")
+
+        text = text.strip()
         if "```json" in text:
             text = text.split("```json")[1].split("```")[0]
         return json.loads(text.strip())

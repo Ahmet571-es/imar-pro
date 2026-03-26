@@ -1,6 +1,6 @@
 """
 Grok 4 Plan Üretim Modülü — xAI API (OpenAI uyumlu).
-Model: grok-4-1-fast-non-reasoning (plan üretimi)
+Model: grok-4.20 (Responses API) (plan üretimi)
 """
 
 import json
@@ -82,23 +82,43 @@ def generate_plans_grok(
         return _generate_grok_demo(polygon_coords, apartment_program, plan_count)
 
     try:
-        from openai import OpenAI
-        client = OpenAI(base_url="https://api.x.ai/v1", api_key=api_key)
+        import requests as req
 
         rules_summary = _summarize_rules(dataset_rules)
         system = SYSTEM_PROMPT.format(dataset_rules=rules_summary)
         user_prompt = _build_prompt(polygon_coords, apartment_program, sun_direction, plan_count, previous_feedback)
 
-        response = client.chat.completions.create(
-            model="grok-4-1-fast-non-reasoning",
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=8192,
+        resp = req.post(
+            "https://api.x.ai/v1/responses",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "grok-4.20",
+                "input": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "store": False,
+            },
+            timeout=120,
         )
+        resp.raise_for_status()
+        result = resp.json()
 
-        text = response.choices[0].message.content
+        # Responses API: output dizisinden text bloklarını al
+        text = ""
+        for block in result.get("output", []):
+            if block.get("type") == "message":
+                for content in block.get("content", []):
+                    if content.get("type") == "output_text":
+                        text += content.get("text", "")
+
+        if not text:
+            logger.error("Grok 4.20 boş yanıt döndü")
+            return _generate_grok_demo(polygon_coords, apartment_program, plan_count)
+
         data = _safe_parse_json(text)
         if data is None:
             logger.error("Grok JSON parse edilemedi")
