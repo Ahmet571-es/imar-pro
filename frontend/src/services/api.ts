@@ -228,3 +228,132 @@ export async function compareProjects(projects: Record<string, unknown>[]) {
     body: JSON.stringify({ projects }),
   })
 }
+
+// ══════════════════════════════════════
+// Derinleştirme API'leri
+// ══════════════════════════════════════
+
+// ── BIM API ──
+
+export async function getBIMDisciplines() {
+  return request<{
+    disciplines: {
+      id: string; name: string; icon: string; color: string
+      elements: string[]; default_visible: boolean
+    }[]
+    bim_level: string
+  }>('/api/bim/disciplines')
+}
+
+export async function getBIMSummary(params: Record<string, unknown>) {
+  return request('/api/bim/summary', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+export async function runClashDetection(params: Record<string, unknown>) {
+  return request('/api/bim/clash-detection', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+export async function getMEPSchematic(params: Record<string, unknown>) {
+  return request('/api/bim/mep-schematic', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+export async function downloadIFC(params: Record<string, unknown>) {
+  const res = await fetch(`${API_BASE}/api/bim/export/ifc`, {
+    method: 'POST',
+    headers: getApiHeaders(),
+    body: JSON.stringify(params),
+  })
+  if (!res.ok) throw new Error(`IFC export hatası (HTTP ${res.status})`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.download = `imarPRO_LOD300.ifc`
+  link.href = url
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+// ── Fizibilite Derinleştirme ──
+
+export async function calculateScenarios(params: Record<string, unknown>) {
+  return request('/api/feasibility/senaryo', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+export async function calculateLoan(params: Record<string, unknown>) {
+  return request('/api/feasibility/kredi', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+export async function calculateInflation(params: Record<string, unknown>) {
+  return request('/api/feasibility/enflasyon', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+export async function calculateRentYield(params: Record<string, unknown>) {
+  return request('/api/feasibility/kira', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+// ── Deprem Derinleştirme ──
+
+export async function getDesignSpectrum(params: Record<string, unknown>) {
+  return request('/api/earthquake/spektrum', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+export async function getBuildingPeriod(params: Record<string, unknown>) {
+  return request('/api/earthquake/periyod', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+export async function getSeismicForces(params: Record<string, unknown>) {
+  return request('/api/earthquake/kuvvet', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+// ── Enerji Derinleştirme ──
+
+export async function getMonthlyEnergy(params: Record<string, unknown>) {
+  return request('/api/energy/aylik', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+export async function getSolarROI(params: Record<string, unknown>) {
+  return request('/api/energy/solar', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+export async function getHeatLossMap(params: Record<string, unknown>) {
+  return request('/api/energy/heat-loss', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}

@@ -11,6 +11,7 @@ import { toast } from '@/stores/toastStore'
 import { getBuildingData, generateRoomRender, generateExteriorRender } from '@/services/api'
 import { WhatIfPanel } from './WhatIfPanel'
 import { BOQPanel } from './BOQPanel'
+import { DisciplineToggle } from './DisciplineToggle'
 import { cn } from '@/lib/utils'
 import {
   Box, ArrowLeft, ArrowRight, Loader2, TriangleAlert,
@@ -328,7 +329,9 @@ export function ThreeDStep() {
 
       {/* 3D Tab */}
       {activeTab === '3d' && (
-        <div className="bg-white rounded-xl border border-border overflow-hidden" style={{ height: 620 }}>
+        <div className="flex gap-4">
+          {/* 3D Viewer */}
+          <div className="flex-1 bg-white rounded-xl border border-border overflow-hidden" style={{ height: 620 }}>
           {loading && (
             <div className="h-full flex items-center justify-center">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -349,6 +352,22 @@ export function ThreeDStep() {
                 totalCost={totalCost}
               />
             </Suspense>
+          )}
+          </div>
+          {/* Discipline Toggle Sidebar */}
+          {buildingData && (
+            <div className="w-72 flex-shrink-0 space-y-3">
+              <DisciplineToggle
+                rooms={planRooms.map(r => ({
+                  name: r.name, type: r.type,
+                  x: r.x, y: r.y,
+                  width: r.width, height: r.height,
+                }))}
+                buildableWidth={buildingData.building?.width || 14}
+                buildableHeight={buildingData.building?.depth || 10}
+                katSayisi={buildingData.building?.floor_count || 4}
+              />
+            </div>
           )}
         </div>
       )}

@@ -8,6 +8,7 @@ import { EnergyPanel } from './EnergyPanel'
 import { ApartmentMixEditor, type ApartmentMixSummary } from './ApartmentMixEditor'
 import { InvestmentDecisionPanel } from './InvestmentDecisionPanel'
 import { DOPPanel } from './DOPPanel'
+import { ScenarioPanel, LoanPanel, InflationPanel, RentYieldPanel } from './DeepFeasibilityPanels'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   AreaChart, Area, Cell, LineChart, Line, Legend, ReferenceLine,
@@ -581,6 +582,33 @@ export function FeasibilityStep() {
           <DOPPanel
             arsaAlani={parselData.alan_m2}
             arsaBirimFiyat={Math.round(feasibilityFormState.arsaMaliyeti / parselData.alan_m2) || 15000}
+          />
+        </div>
+      )}
+
+      {/* Derinleştirme Panelleri */}
+      {data && (
+        <div className="mt-6 space-y-3">
+          <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-violet-600" />
+            İleri Düzey Analiz
+          </h3>
+          <ScenarioPanel
+            toplamMaliyet={data.ozet?.toplam_gider || data.maliyet?.toplam_maliyet || 0}
+            toplamGelir={data.ozet?.toplam_gelir || data.gelir?.toplam_gelir || 0}
+          />
+          <LoanPanel
+            toplamMaliyet={data.ozet?.toplam_gider || data.maliyet?.toplam_maliyet || 0}
+            toplamGelir={data.ozet?.toplam_gelir || data.gelir?.toplam_gelir || 0}
+          />
+          <InflationPanel
+            toplamMaliyet={data.ozet?.toplam_gider || data.maliyet?.toplam_maliyet || 0}
+            toplamGelir={data.ozet?.toplam_gelir || data.gelir?.toplam_gelir || 0}
+          />
+          <RentYieldPanel
+            toplamMaliyet={data.ozet?.toplam_gider || data.maliyet?.toplam_maliyet || 0}
+            toplamGelir={data.ozet?.toplam_gelir || data.gelir?.toplam_gelir || 0}
+            daireSayisi={data.parametreler?.toplam_daire || 8}
           />
         </div>
       )}
