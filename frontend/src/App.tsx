@@ -7,6 +7,7 @@ import { ThreeDStep } from '@/components/three/ThreeDStep'
 import { FeasibilityStep } from '@/components/feasibility/FeasibilityStep'
 import { AuthPage } from '@/components/auth/AuthPage'
 import { ProjectsDashboard } from '@/components/projects/ProjectsDashboard'
+import { LandingPage } from '@/components/landing/LandingPage'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { ToastContainer } from '@/components/ui/ToastContainer'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
@@ -17,7 +18,7 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { toast } from '@/stores/toastStore'
 import { Loader2 } from 'lucide-react'
 
-type AppView = 'auth' | 'projects' | 'wizard'
+type AppView = 'landing' | 'auth' | 'projects' | 'wizard'
 
 function WizardRouter() {
   const { currentStep } = useProjectStore()
@@ -36,7 +37,7 @@ function AppContent() {
   const { loadFromStorage } = useSettingsStore()
   const { currentProjectId, serialize, markSaved, isDirty } = useProjectStore()
   const { updateProject } = useProjectListStore()
-  const [view, setView] = useState<AppView>('auth')
+  const [view, setView] = useState<AppView>('landing')
 
   // Initialize auth + settings
   useEffect(() => {
@@ -44,12 +45,12 @@ function AppContent() {
     loadFromStorage()
   }, [initialize, loadFromStorage])
 
-  // Set view based on auth state
+  // Set view based on auth state (only if not on landing)
   useEffect(() => {
-    if (!loading) {
+    if (!loading && view !== 'landing') {
       setView(user ? 'projects' : 'auth')
     }
-  }, [user, loading])
+  }, [user, loading, view])
 
   // Ctrl+S keyboard shortcut for save
   const handleSave = useCallback(async () => {
@@ -77,7 +78,27 @@ function AppContent() {
 
   // Auto-save when data changes (isDirty) with debounce
   // Uses getState() to avoid stale closures
-  const { isDirty: currentDirty } = useProjectStore()
+  const { isDirty: currentDirty, completedSteps } = useProjectStore()
+  const completedSize = completedSteps.size
+
+  // Immediate save when a step is completed
+  useEffect(() => {
+    if (completedSize === 0) return
+    const state = useProjectStore.getState()
+    if (!state.currentProjectId || !state.isDirty) return
+    const data = state.serialize()
+    useProjectListStore.getState().updateProject(
+      state.currentProjectId,
+      data as unknown as Record<string, unknown>
+    ).then((success) => {
+      if (success) {
+        useProjectStore.getState().markSaved()
+        toast.info('Otomatik Kayıt', 'Adım tamamlandı — proje kaydedildi')
+      }
+    })
+  }, [completedSize])
+
+  // Debounced auto-save for other changes
   useEffect(() => {
     if (!currentDirty) return
     const timer = setTimeout(async () => {
@@ -108,6 +129,11 @@ function AppContent() {
         </div>
       </div>
     )
+  }
+
+  // Landing page
+  if (view === 'landing') {
+    return <LandingPage onGetStarted={() => setView(user ? 'projects' : 'auth')} />
   }
 
   // Auth

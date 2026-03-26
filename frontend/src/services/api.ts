@@ -123,6 +123,10 @@ export async function analyzeEarthquake(params: Record<string, unknown>) {
   })
 }
 
+export async function getAfadIller() {
+  return request<{ il: string; plaka: number; ss: number; s1: number; latitude: number; longitude: number }[]>('/api/earthquake/afad-iller')
+}
+
 // ── Energy API ──
 
 export async function calculateEnergy(params: Record<string, unknown>) {

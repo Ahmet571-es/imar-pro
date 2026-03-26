@@ -21,6 +21,7 @@ interface EnergyData {
   gunes_kazanci_kwh: number
   oneriler: string[]
   yalitim_karsilastirma: { yalitim: string; u_degeri: number; kwh_m2: number; sinif: string; maliyet_tl: number; secili: boolean }[]
+  pencere_karsilastirma: { pencere: string; u_degeri: number; kwh_m2: number; sinif: string; maliyet_tl: number; secili: boolean }[]
 }
 
 interface Props {
@@ -157,6 +158,47 @@ export function EnergyPanel({ toplamAlan, katSayisi }: Props) {
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* Window type comparison chart */}
+          {data.pencere_karsilastirma && data.pencere_karsilastirma.length > 0 && (
+            <div>
+              <h4 className="text-xs font-semibold text-text-muted mb-2">PENCERE TİPİ KARŞILAŞTIRMA</h4>
+              <div style={{ height: 180 }}>
+                <ResponsiveContainer>
+                  <BarChart data={data.pencere_karsilastirma} margin={{ left: 0, right: 10, top: 5, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                    <XAxis dataKey="pencere" fontSize={9} />
+                    <YAxis fontSize={9} label={{ value: 'kWh/m²', angle: -90, position: 'insideLeft', fontSize: 9 }} />
+                    <Tooltip
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      formatter={(v: any) => [`${Number(v)} kWh/m²`, 'Enerji']}
+                      labelFormatter={(label) => {
+                        const item = data.pencere_karsilastirma.find(p => p.pencere === label)
+                        return item ? `${label} (U=${item.u_degeri} W/m²K) — Sınıf ${item.sinif}` : String(label)
+                      }}
+                    />
+                    <Bar dataKey="kwh_m2" radius={[4, 4, 0, 0]}>
+                      {data.pencere_karsilastirma.map((entry, i) => (
+                        <Cell key={i} fill={entry.secili ? '#0d9488' : '#94a3b8'} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="grid grid-cols-4 gap-1.5 mt-2">
+                {data.pencere_karsilastirma.map((p, i) => (
+                  <div key={i} className={cn(
+                    'text-center px-2 py-1.5 rounded-lg text-[10px] border',
+                    p.secili ? 'bg-teal-50 border-teal-300 text-teal-800 font-semibold' : 'bg-surface-alt border-transparent text-text-muted'
+                  )}>
+                    <div className="font-mono text-xs">{p.u_degeri}</div>
+                    <div>U (W/m²K)</div>
+                    <div className="font-semibold text-xs mt-0.5">₺{p.maliyet_tl.toLocaleString('tr-TR')}/yıl</div>
+                  </div>
+                ))}
               </div>
             </div>
           )}

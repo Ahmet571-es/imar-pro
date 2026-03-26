@@ -565,6 +565,7 @@ export function FeasibilityStep() {
             binaH={hesaplama.cekme_polygon_coords
               ? Math.max(...hesaplama.cekme_polygon_coords.map(c => c.y)) - Math.min(...hesaplama.cekme_polygon_coords.map(c => c.y))
               : parselData!.bounds.height - 2 * imarParams.yan_bahce}
+            il={feasibilityFormState.il}
           />
           <EnergyPanel
             toplamAlan={hesaplama.toplam_insaat_alani}

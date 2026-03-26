@@ -74,8 +74,13 @@ def deprem_risk_analizi(
     s1_override: float = 0,
     bina_genisligi: float = 12.0,
     bina_derinligi: float = 10.0,
+    il_adi: str = "",
 ) -> DepremAnalizi:
-    """Deprem risk analizi yapar."""
+    """Deprem risk analizi yapar.
+
+    Args:
+        il_adi: İl adı — AFAD 81 il tablosu fallback'i için kullanılır.
+    """
     sonuc = DepremAnalizi(
         latitude=latitude, longitude=longitude,
         zemin_sinifi=zemin_sinifi,
@@ -84,13 +89,14 @@ def deprem_risk_analizi(
     # Deprem parametreleri
     if ss_override > 0:
         sonuc.ss = ss_override
+        sonuc.s1 = s1_override if s1_override > 0 else ss_override * 0.35
     else:
-        sonuc.ss, sonuc.afad_api_basarili = _estimate_ss(latitude, longitude)
+        sonuc.ss, sonuc.s1, sonuc.afad_api_basarili = _estimate_ss(
+            latitude, longitude, il_adi=il_adi
+        )
 
     if s1_override > 0:
         sonuc.s1 = s1_override
-    else:
-        sonuc.s1 = sonuc.ss * 0.35
 
     # Zemin amplifikasyonu
     zemin_info = ZEMIN_SINIFLARI.get(zemin_sinifi, ZEMIN_SINIFLARI["ZC"])
@@ -202,11 +208,11 @@ def _calculate_column_grid(
     return grid
 
 
-def _estimate_ss(lat: float, lon: float) -> tuple[float, bool]:
-    """AFAD TDTH API'den Ss değeri çeker, başarısız olursa tahmin yapar.
+def _estimate_ss(lat: float, lon: float, il_adi: str = "") -> tuple[float, float, bool]:
+    """AFAD TDTH API'den Ss/S1 değeri çeker, başarısız olursa 81 il tablosunu kullanır.
 
     Returns:
-        (ss_value, api_basarili)
+        (ss_value, s1_value, api_basarili)
     """
     # Yöntem 1: AFAD TDTH API
     try:
@@ -219,10 +225,12 @@ def _estimate_ss(lat: float, lon: float) -> tuple[float, bool]:
         if resp.status_code == 200:
             data = resp.json()
             ss = data.get("Ss", data.get("ss", 0))
+            s1 = data.get("S1", data.get("s1", 0))
             if ss and float(ss) > 0:
-                logger.info(f"AFAD API'den Ss={ss} alindi ({lat:.2f}, "
-                            f"{lon:.2f})")
-                return float(ss), True
+                logger.info(f"AFAD API'den Ss={ss}, S1={s1} alindi "
+                            f"({lat:.2f}, {lon:.2f})")
+                s1_val = float(s1) if s1 and float(s1) > 0 else float(ss) * 0.35
+                return float(ss), s1_val, True
     except Exception as e:
         logger.debug(f"AFAD API hatasi: {e}")
 
@@ -236,14 +244,37 @@ def _estimate_ss(lat: float, lon: float) -> tuple[float, bool]:
         if resp2.status_code == 200:
             data2 = resp2.json()
             ss = data2.get("Ss", data2.get("ss", 0))
+            s1 = data2.get("S1", data2.get("s1", 0))
             if ss and float(ss) > 0:
                 logger.info(f"AFAD alt. API'den Ss={ss} alindi")
-                return float(ss), True
+                s1_val = float(s1) if s1 and float(s1) > 0 else float(ss) * 0.35
+                return float(ss), s1_val, True
     except Exception as e:
         logger.debug(f"AFAD alt. API hatasi: {e}")
 
-    # Yöntem 3: Hardcoded tahmin (fallback)
-    logger.warning("AFAD API erisilemedi, tahmin kullaniliyor")
+    # Yöntem 3: AFAD 81 İl Tablosu (güvenilir fallback)
+    try:
+        from config.afad_ss_s1 import get_il_parametreleri, get_en_yakin_il
+
+        # Önce il adıyla dene
+        if il_adi:
+            il_param = get_il_parametreleri(il_adi)
+            if il_param:
+                logger.info(f"AFAD 81 il tablosundan: {il_param.il} "
+                            f"Ss={il_param.ss}, S1={il_param.s1}")
+                return il_param.ss, il_param.s1, False
+
+        # Koordinata en yakın il merkezini bul
+        en_yakin = get_en_yakin_il(lat, lon)
+        logger.info(f"AFAD 81 il tablosundan (en yakın: {en_yakin.il}): "
+                    f"Ss={en_yakin.ss}, S1={en_yakin.s1}")
+        return en_yakin.ss, en_yakin.s1, False
+
+    except Exception as e:
+        logger.warning(f"AFAD 81 il tablosu hatasi: {e}")
+
+    # Yöntem 4: Son çare kaba tahmin
+    logger.warning("AFAD tüm yöntemler başarısız, kaba tahmin kullanılıyor")
     base = 0.40
     if 39.5 < lat < 41.5 and 27 < lon < 42:
         base = 0.75
@@ -253,7 +284,7 @@ def _estimate_ss(lat: float, lon: float) -> tuple[float, bool]:
         base = 0.65
     elif lon > 42:
         base = 0.30
-    return base, False
+    return base, base * 0.35, False
 
 
 def test_afad_api() -> dict:

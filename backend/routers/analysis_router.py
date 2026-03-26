@@ -27,6 +27,7 @@ class EarthquakeRequest(BaseModel):
     s1_override: float = Field(default=0, ge=0)
     bina_genisligi: float = Field(default=12.0, gt=0)
     bina_derinligi: float = Field(default=10.0, gt=0)
+    il_adi: str = Field(default="", description="İl adı — AFAD 81 il tablosu fallback'i için")
 
 
 @router.post("/api/earthquake/analyze")
@@ -42,6 +43,7 @@ async def analyze_earthquake(req: EarthquakeRequest):
             s1_override=req.s1_override,
             bina_genisligi=req.bina_genisligi,
             bina_derinligi=req.bina_derinligi,
+            il_adi=req.il_adi,
         )
 
         # Kolon grid verisi
@@ -149,6 +151,17 @@ async def get_zemin_siniflari():
     return ZEMIN_SINIFLARI
 
 
+@router.get("/api/earthquake/afad-iller")
+async def get_afad_iller():
+    """AFAD 81 il Ss/S1 tablosu — frontend dropdown ve harita için."""
+    try:
+        from config.afad_ss_s1 import get_tum_iller
+        return get_tum_iller()
+    except Exception as e:
+        logger.error(f"AFAD il tablosu hatası: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Enerji ──
 
 class EnergyRequest(BaseModel):
@@ -197,6 +210,25 @@ async def calculate_energy(req: EnergyRequest):
                     "secili": yal_key == req.duvar_yalitim,
                 })
 
+        # Pencere tipi karşılaştırma
+        pencere_karsilastirma = []
+        for pen_key, u_val in PENCERE_U_DEGERLERI.items():
+            alt_sonuc2 = enerji_performans_hesapla(
+                toplam_alan=req.toplam_alan, kat_sayisi=req.kat_sayisi,
+                duvar_yalitim=req.duvar_yalitim, pencere_tipi=pen_key,
+                cati_yalitimli=req.cati_yalitimli,
+                pencere_duvar_orani=req.pencere_duvar_orani,
+                isitma_sistemi=req.isitma_sistemi, latitude=req.latitude,
+            )
+            pencere_karsilastirma.append({
+                "pencere": pen_key.replace("_", " ").title(),
+                "u_degeri": u_val,
+                "kwh_m2": round(alt_sonuc2.yillik_toplam_kwh_m2, 1),
+                "sinif": alt_sonuc2.enerji_sinifi,
+                "maliyet_tl": round(alt_sonuc2.yillik_enerji_maliyeti),
+                "secili": pen_key == req.pencere_tipi,
+            })
+
         return {
             "enerji_sinifi": sonuc.enerji_sinifi,
             "sinif_bilgi": ENERJI_SINIFLARI.get(sonuc.enerji_sinifi, {}),
@@ -214,6 +246,7 @@ async def calculate_energy(req: EnergyRequest):
             "gunes_kazanci_kwh": round(sonuc.gunes_kazanci_kwh, 1),
             "oneriler": sonuc.oneriler,
             "yalitim_karsilastirma": karsilastirma,
+            "pencere_karsilastirma": pencere_karsilastirma,
         }
     except Exception as e:
         logger.error(f"Enerji hesap hatası: {e}", exc_info=True)

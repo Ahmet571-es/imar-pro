@@ -95,4 +95,59 @@
     border-color: var(--color-primary-light);
     background: var(--color-surface-alt);
   }
+
+  /* 3D viewer mobile touch support */
+  .three-canvas-container canvas {
+    touch-action: none;
+  }
+
+  /* Mobile responsive overrides */
+  @media (max-width: 640px) {
+    .input-field {
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+    .btn-primary, .btn-secondary {
+      padding: 8px 16px;
+      font-size: 13px;
+    }
+    /* Step content padding */
+    main > div {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+  }
+
+  /* Tablet breakpoint */
+  @media (min-width: 641px) and (max-width: 1024px) {
+    .input-field {
+      padding: 9px 13px;
+      font-size: 13.5px;
+    }
+  }
+
+  /* 3D viewer mobile pinch-zoom */
+  @media (pointer: coarse) {
+    .three-canvas-container {
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .three-canvas-container canvas {
+      touch-action: none;
+    }
+  }
+
+  /* Scrollbar styling for step navigation */
+  nav::-webkit-scrollbar {
+    height: 2px;
+  }
+  nav::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  nav::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 1px;
+  }
 }

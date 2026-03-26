@@ -495,7 +495,7 @@ export function BuildingViewer({ floors, columns, building, totalCost = 0 }: Bui
   }, [constructionMonth])
 
   return (
-    <div className="relative w-full h-full min-h-[500px] rounded-xl overflow-hidden bg-gradient-to-b from-sky-100 to-sky-50">
+    <div className="three-canvas-container relative w-full h-full min-h-[400px] sm:min-h-[500px] rounded-xl overflow-hidden bg-gradient-to-b from-sky-100 to-sky-50">
       <Canvas
         shadows
         camera={{

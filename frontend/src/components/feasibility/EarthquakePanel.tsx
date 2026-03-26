@@ -1,12 +1,12 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
 import { toast } from '@/stores/toastStore'
-import { analyzeEarthquake } from '@/services/api'
+import { analyzeEarthquake, getAfadIller } from '@/services/api'
 import { cn } from '@/lib/utils'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
-import { Loader2, TriangleAlert, ShieldAlert, Activity } from 'lucide-react'
+import { Loader2, TriangleAlert, ShieldAlert, Activity, MapPin } from 'lucide-react'
 
 interface EarthquakeData {
   parametreler: { ss: number; s1: number; zemin_sinifi: string; zemin_aciklama: string; bks: number; bys: number; deprem_bolgesi: string; risk_seviyesi: string; afad_api: boolean }
@@ -17,18 +17,33 @@ interface EarthquakeData {
   detaylar: string[]
 }
 
+interface AfadIl { il: string; plaka: number; ss: number; s1: number; latitude: number; longitude: number }
+
 interface Props {
   katSayisi: number
   binaW: number
   binaH: number
+  il?: string
 }
 
-export function EarthquakePanel({ katSayisi, binaW, binaH }: Props) {
+export function EarthquakePanel({ katSayisi, binaW, binaH, il = 'Ankara' }: Props) {
   const { earthquakeData, setEarthquakeData } = useProjectStore()
   const [data, setData] = useState<EarthquakeData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [zemin, setZemin] = useState('ZC')
+  const [selectedIl, setSelectedIl] = useState(il)
+  const [afadIller, setAfadIller] = useState<AfadIl[]>([])
+
+  // Fetch AFAD iller list on mount
+  useEffect(() => {
+    getAfadIller()
+      .then((iller) => setAfadIller(iller as AfadIl[]))
+      .catch(() => {
+        // Fallback: at least provide Ankara
+        setAfadIller([{ il: 'Ankara', plaka: 6, ss: 0.411, s1: 0.109, latitude: 39.93, longitude: 32.86 }])
+      })
+  }, [])
 
   // Restore from store
   useEffect(() => {
@@ -37,33 +52,53 @@ export function EarthquakePanel({ katSayisi, binaW, binaH }: Props) {
     }
   }, [earthquakeData, data])
 
+  // Sync il prop
+  useEffect(() => { if (il) setSelectedIl(il) }, [il])
+
+  const getIlCoords = useCallback(() => {
+    const found = afadIller.find(i => i.il === selectedIl)
+    return found ? { lat: found.latitude, lon: found.longitude } : { lat: 39.93, lon: 32.86 }
+  }, [selectedIl, afadIller])
+
   const handleAnalyze = useCallback(async () => {
     setLoading(true); setError(null)
+    const coords = getIlCoords()
     try {
       const result = await analyzeEarthquake({
-        latitude: 39.93, longitude: 32.86,
+        latitude: coords.lat, longitude: coords.lon,
         kat_sayisi: katSayisi, zemin_sinifi: zemin,
         bina_genisligi: binaW, bina_derinligi: binaH,
+        il_adi: selectedIl,
       }) as EarthquakeData
       setData(result)
       setEarthquakeData(result)
-      toast.success('Deprem Analizi', `Risk seviyesi: ${result.parametreler.risk_seviyesi}`)
+      toast.success('Deprem Analizi', `${selectedIl} — Risk: ${result.parametreler.risk_seviyesi}`)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Deprem analizi hatası'
       setError(msg)
       toast.error('Deprem Analizi Hatası', msg)
     } finally { setLoading(false) }
-  }, [katSayisi, binaW, binaH, zemin, setEarthquakeData])
+  }, [katSayisi, binaW, binaH, zemin, selectedIl, setEarthquakeData, getIlCoords])
 
   const riskColor = (r: string) => r === 'Dusuk' ? 'text-green-600' : r === 'Orta' ? 'text-yellow-600' : r === 'Yuksek' ? 'text-orange-600' : 'text-red-600'
 
   return (
     <div className="bg-white rounded-xl border border-border p-5">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h3 className="font-semibold flex items-center gap-2 text-sm">
           <ShieldAlert className="w-5 h-5 text-primary" /> Deprem Risk Analizi
         </h3>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1">
+            <MapPin className="w-3 h-3 text-text-muted" />
+            <select value={selectedIl} onChange={(e) => setSelectedIl(e.target.value)} className="input-field text-xs py-1 w-32">
+              {afadIller.length > 0 ? (
+                afadIller.map(i => <option key={i.plaka} value={i.il}>{i.il} (Ss={i.ss})</option>)
+              ) : (
+                <option value="Ankara">Ankara</option>
+              )}
+            </select>
+          </div>
           <select value={zemin} onChange={(e) => setZemin(e.target.value)} className="input-field text-xs py-1 w-20">
             {['ZA', 'ZB', 'ZC', 'ZD', 'ZE'].map(z => <option key={z} value={z}>{z}</option>)}
           </select>
