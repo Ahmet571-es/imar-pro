@@ -83,7 +83,7 @@ def generate_render(
     try:
         from openai import OpenAI
         client = OpenAI(base_url="https://api.x.ai/v1", api_key=api_key)
-        response = client.images.generate(model="grok-2-image", prompt=prompt)
+        response = client.images.generate(model="grok-imagine-image", prompt=prompt)
         if response.data and len(response.data) > 0:
             result.image_url = response.data[0].url or ""
             result.success = True
@@ -124,7 +124,7 @@ def generate_exterior_render(
     try:
         from openai import OpenAI
         client = OpenAI(base_url="https://api.x.ai/v1", api_key=api_key)
-        response = client.images.generate(model="grok-2-image", prompt=prompt)
+        response = client.images.generate(model="grok-imagine-image", prompt=prompt)
         if response.data and len(response.data) > 0:
             result.image_url = response.data[0].url or ""
             result.success = True

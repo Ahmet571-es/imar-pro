@@ -94,7 +94,7 @@ def generate_plans_claude(
         )
 
         response = client.messages.create(
-            model="claude-sonnet-4-6-20250514",
+            model="claude-sonnet-4-20250514",
             max_tokens=8192,
             system=system,
             messages=[{"role": "user", "content": user_prompt}],

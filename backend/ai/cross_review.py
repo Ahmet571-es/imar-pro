@@ -79,7 +79,7 @@ def _review_with_claude(plan_info: str, api_key: str) -> dict | None:
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
-            model="claude-sonnet-4-6-20250514",
+            model="claude-sonnet-4-20250514",
             max_tokens=1024,
             messages=[{"role": "user", "content": REVIEW_PROMPT.format(plan_info=plan_info)}],
         )
@@ -103,7 +103,7 @@ def _review_with_grok(plan_info: str, api_key: str) -> dict | None:
         from openai import OpenAI
         client = OpenAI(base_url="https://api.x.ai/v1", api_key=api_key)
         response = client.chat.completions.create(
-            model="grok-4-0620",
+            model="grok-3",
             messages=[{"role": "user", "content": REVIEW_PROMPT.format(plan_info=plan_info)}],
             max_tokens=1024,
         )
