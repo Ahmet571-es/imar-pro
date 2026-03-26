@@ -881,3 +881,84 @@ class TestSaaS:
         r = client.put("/api/notifications/read-all",
             headers={"X-Demo-User-Id": "test-123"})
         assert r.status_code == 200
+
+
+# ══════════════════════════════════════
+# 20. SaaS Genişletilmiş API
+# ══════════════════════════════════════
+
+class TestSaaSExtended:
+    def test_password_reset_demo(self, client):
+        r = client.post("/api/auth/reset-password", json={"email": "test@test.com"})
+        assert r.status_code == 200
+
+    def test_password_update_no_auth(self, client):
+        r = client.put("/api/user/password", json={"new_password": "newpass123"})
+        assert r.status_code == 401
+
+    def test_password_update_demo(self, client):
+        r = client.put("/api/user/password",
+            json={"new_password": "newpass123"},
+            headers={"X-Demo-User-Id": "test-1"})
+        assert r.status_code == 200
+
+    def test_invite_accept_demo(self, client):
+        r = client.post("/api/org/invite/fake-id/accept",
+            headers={"X-Demo-User-Id": "test-1"})
+        assert r.status_code == 200
+
+    def test_invite_reject_demo(self, client):
+        r = client.post("/api/org/invite/fake-id/reject",
+            headers={"X-Demo-User-Id": "test-1"})
+        assert r.status_code == 200
+
+    def test_org_members_demo(self, client):
+        r = client.get("/api/org/fake-org/members",
+            headers={"X-Demo-User-Id": "test-1"})
+        assert r.status_code == 200
+
+    def test_admin_update_user_no_auth(self, client):
+        r = client.put("/api/admin/users/fake-id", json={"plan": "pro"})
+        assert r.status_code == 401
+
+    def test_admin_audit_demo(self, client):
+        r = client.get("/api/admin/audit",
+            headers={"X-Demo-User-Id": "admin-1"})
+        assert r.status_code == 200
+
+    def test_project_create_demo(self, client):
+        r = client.post("/api/projects",
+            json={"name": "Test Proje", "il": "Ankara"},
+            headers={"X-Demo-User-Id": "test-1"})
+        assert r.status_code == 200
+        assert r.json()["success"] is True
+
+    def test_project_list_demo(self, client):
+        r = client.get("/api/projects",
+            headers={"X-Demo-User-Id": "test-1"})
+        assert r.status_code == 200
+
+    def test_project_update_demo(self, client):
+        r = client.put("/api/projects/fake-id",
+            json={"name": "Güncel İsim"},
+            headers={"X-Demo-User-Id": "test-1"})
+        assert r.status_code == 200
+
+    def test_project_delete_demo(self, client):
+        r = client.delete("/api/projects/fake-id",
+            headers={"X-Demo-User-Id": "test-1"})
+        assert r.status_code == 200
+
+    def test_system_health(self, client):
+        r = client.get("/api/system/health")
+        assert r.status_code == 200
+        data = r.json()
+        assert "overall" in data
+        assert data["api"] == "ok"
+
+    def test_project_update_empty(self, client):
+        """Boş güncelleme → 400."""
+        r = client.put("/api/projects/fake-id",
+            json={},
+            headers={"X-Demo-User-Id": "test-1"})
+        assert r.status_code == 400

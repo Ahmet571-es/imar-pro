@@ -4,22 +4,35 @@ import { cn } from '@/lib/utils'
 import { Loader2, Mail, Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-react'
 
 export function AuthPage() {
-  const { signIn, signUp, continueAsGuest, error, loading, isDemo } = useAuthStore()
-  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const { signIn, signUp, continueAsGuest, resetPassword, error, loading, isDemo, clearError } = useAuthStore()
+  const [mode, setMode] = useState<'login' | 'register' | 'reset'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [signupSuccess, setSignupSuccess] = useState(false)
+  const [resetSent, setResetSent] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (mode === 'reset') {
+      const success = await resetPassword(email)
+      if (success) setResetSent(true)
+      return
+    }
     if (mode === 'login') {
       await signIn(email, password)
     } else {
       const success = await signUp(email, password, name)
       if (success) setSignupSuccess(true)
     }
+  }
+
+  const switchMode = (newMode: 'login' | 'register' | 'reset') => {
+    setMode(newMode)
+    clearError()
+    setSignupSuccess(false)
+    setResetSent(false)
   }
 
   return (
@@ -75,10 +88,10 @@ export function AuthPage() {
 
           <div className="bg-white rounded-2xl shadow-2xl p-8">
             <h3 className="text-xl font-bold text-text mb-1" style={{ fontFamily: 'var(--font-display)' }}>
-              {mode === 'login' ? 'Giriş Yap' : 'Hesap Oluştur'}
+              {mode === 'login' ? 'Giriş Yap' : mode === 'register' ? 'Hesap Oluştur' : 'Şifre Sıfırla'}
             </h3>
             <p className="text-sm text-text-muted mb-6">
-              {mode === 'login' ? 'Projelerinize erişin' : 'Ücretsiz hesabınızı oluşturun'}
+              {mode === 'login' ? 'Projelerinize erişin' : mode === 'register' ? 'Ücretsiz hesabınızı oluşturun' : 'E-posta adresinize sıfırlama linki göndereceğiz'}
             </p>
 
             {isDemo && (
@@ -91,8 +104,18 @@ export function AuthPage() {
               <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-3 text-sm text-green-800 mb-4">
                 ✅ <strong>Kayıt başarılı!</strong> E-posta adresinize onay linki gönderildi.
                 Onayladıktan sonra giriş yapabilirsiniz.
-                <button onClick={() => { setSignupSuccess(false); setMode('login') }}
+                <button onClick={() => switchMode('login')}
                   className="block mt-2 text-green-700 font-semibold hover:underline">
+                  → Giriş sayfasına dön
+                </button>
+              </div>
+            )}
+
+            {resetSent && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-3 text-sm text-blue-800 mb-4">
+                📧 <strong>Link gönderildi!</strong> E-posta kutunuzu kontrol edin.
+                <button onClick={() => switchMode('login')}
+                  className="block mt-2 text-blue-700 font-semibold hover:underline">
                   → Giriş sayfasına dön
                 </button>
               </div>
@@ -119,8 +142,15 @@ export function AuthPage() {
                 </div>
               </div>
 
+              {mode !== 'reset' && (
               <div>
-                <label className="text-xs font-medium text-text-muted mb-1 block">Şifre</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-medium text-text-muted">Şifre</label>
+                  {mode === 'login' && (
+                    <button type="button" onClick={() => switchMode('reset')}
+                      className="text-xs text-primary hover:underline">Şifremi Unuttum</button>
+                  )}
+                </div>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-light" />
                   <input type={showPw ? 'text' : 'password'} value={password}
@@ -132,6 +162,7 @@ export function AuthPage() {
                   </button>
                 </div>
               </div>
+              )}
 
               {error && (
                 <div className="text-sm text-danger bg-danger/5 rounded-lg px-3 py-2">{error}</div>
@@ -140,15 +171,26 @@ export function AuthPage() {
               <button type="submit" disabled={loading}
                 className="btn-primary w-full flex items-center justify-center gap-2 py-3 text-base">
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-5 h-5" />}
-                {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
+                {mode === 'login' ? 'Giriş Yap' : mode === 'register' ? 'Kayıt Ol' : 'Sıfırlama Linki Gönder'}
               </button>
             </form>
 
-            <div className="mt-4 text-center">
-              <button onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-                className="text-sm text-primary hover:underline">
-                {mode === 'login' ? 'Hesabınız yok mu? Kayıt olun' : 'Zaten hesabınız var mı? Giriş yapın'}
-              </button>
+            <div className="mt-4 text-center space-y-2">
+              {mode === 'login' && (
+                <button onClick={() => switchMode('register')} className="text-sm text-primary hover:underline block mx-auto">
+                  Hesabınız yok mu? Kayıt olun
+                </button>
+              )}
+              {mode === 'register' && (
+                <button onClick={() => switchMode('login')} className="text-sm text-primary hover:underline block mx-auto">
+                  Zaten hesabınız var mı? Giriş yapın
+                </button>
+              )}
+              {mode === 'reset' && (
+                <button onClick={() => switchMode('login')} className="text-sm text-primary hover:underline block mx-auto">
+                  ← Giriş sayfasına dön
+                </button>
+              )}
             </div>
 
             <div className="relative my-5">

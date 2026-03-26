@@ -471,3 +471,345 @@ async def admin_list_users(request: Request):
             raise HTTPException(500, str(e))
 
     return {"users": [], "total": 0, "mode": "demo"}
+
+
+# ══════════════════════════════════════
+# 6. ŞİFRE SIFIRLAMA
+# ══════════════════════════════════════
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+
+class PasswordUpdate(BaseModel):
+    current_password: Optional[str] = None
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+@router.post("/api/auth/reset-password")
+async def request_password_reset(data: PasswordResetRequest):
+    """Şifre sıfırlama emaili gönder."""
+    sb = _get_supabase()
+    if not sb:
+        return {"success": True, "message": "Demo modda şifre sıfırlama devre dışı", "mode": "demo"}
+
+    try:
+        sb.auth.admin.generate_link({
+            "type": "recovery",
+            "email": data.email,
+            "options": {"redirect_to": "https://frontend-eta-kohl-48.vercel.app/"},
+        })
+        return {"success": True, "message": "Şifre sıfırlama linki email adresinize gönderildi"}
+    except Exception as e:
+        # Güvenlik: email var/yok bilgisi verme
+        return {"success": True, "message": "Eğer bu email kayıtlıysa, şifre sıfırlama linki gönderildi"}
+
+
+@router.put("/api/user/password")
+async def update_password(data: PasswordUpdate, request: Request):
+    """Şifre değiştir (giriş yapmış kullanıcı)."""
+    user = _require_user(request)
+    sb = _get_supabase()
+
+    if not sb:
+        return {"success": True, "mode": "demo"}
+
+    try:
+        # Admin API ile şifre güncelle
+        sb.auth.admin.update_user_by_id(user["user_id"], {"password": data.new_password})
+        return {"success": True, "message": "Şifre başarıyla güncellendi"}
+    except Exception as e:
+        raise HTTPException(400, f"Şifre güncelleme hatası: {str(e)}")
+
+
+# ══════════════════════════════════════
+# 7. DAVET KABUL / REDDET
+# ══════════════════════════════════════
+
+@router.post("/api/org/invite/{invite_id}/accept")
+async def accept_invite(invite_id: str, request: Request):
+    """Organizasyon davetini kabul et."""
+    user = _require_user(request)
+    sb = _get_supabase()
+
+    if sb:
+        try:
+            # Davet kontrolü
+            invite = sb.table("org_members").select("*").eq("id", invite_id).eq("user_id", user["user_id"]).eq("status", "pending").single().execute()
+            if not invite.data:
+                raise HTTPException(404, "Davet bulunamadı veya zaten işlenmiş")
+
+            sb.table("org_members").update({
+                "status": "active",
+                "accepted_at": datetime.utcnow().isoformat(),
+            }).eq("id", invite_id).execute()
+
+            return {"success": True, "org_id": invite.data["org_id"]}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(500, str(e))
+
+    return {"success": True, "mode": "demo"}
+
+
+@router.post("/api/org/invite/{invite_id}/reject")
+async def reject_invite(invite_id: str, request: Request):
+    """Organizasyon davetini reddet."""
+    user = _require_user(request)
+    sb = _get_supabase()
+
+    if sb:
+        try:
+            sb.table("org_members").update({"status": "revoked"}).eq("id", invite_id).eq("user_id", user["user_id"]).execute()
+            return {"success": True}
+        except Exception as e:
+            raise HTTPException(500, str(e))
+
+    return {"success": True, "mode": "demo"}
+
+
+@router.get("/api/org/{org_id}/members")
+async def list_org_members(org_id: str, request: Request):
+    """Organizasyon üyelerini listele."""
+    user = _require_user(request)
+    sb = _get_supabase()
+
+    if sb:
+        try:
+            members = sb.table("org_members").select(
+                "id, role, status, accepted_at, profiles(id, email, full_name, avatar_url)"
+            ).eq("org_id", org_id).order("accepted_at", desc=True).execute()
+            return {"members": members.data or []}
+        except Exception as e:
+            raise HTTPException(500, str(e))
+
+    return {"members": [], "mode": "demo"}
+
+
+# ══════════════════════════════════════
+# 8. ADMIN KULLANICI YÖNETİMİ
+# ══════════════════════════════════════
+
+class AdminUserUpdate(BaseModel):
+    role: Optional[str] = None
+    plan: Optional[str] = None
+    max_projects: Optional[int] = None
+    max_ai_calls_monthly: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+@router.put("/api/admin/users/{user_id}")
+async def admin_update_user(user_id: str, data: AdminUserUpdate, request: Request):
+    """Admin: kullanıcı bilgilerini güncelle (plan, rol, limitler)."""
+    _require_admin(request)
+    sb = _get_supabase()
+
+    if not sb:
+        return {"success": True, "mode": "demo"}
+
+    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+    if not update_data:
+        raise HTTPException(400, "Güncellenecek alan yok")
+
+    # is_active → Supabase Auth ban/unban
+    if "is_active" in update_data:
+        try:
+            is_active = update_data.pop("is_active")
+            if not is_active:
+                sb.auth.admin.update_user_by_id(user_id, {"ban_duration": "876000h"})  # ~100 yıl ban
+            else:
+                sb.auth.admin.update_user_by_id(user_id, {"ban_duration": "none"})
+        except Exception as e:
+            logger.warning(f"User ban/unban hatası: {e}")
+
+    if update_data:
+        try:
+            sb.table("profiles").update(update_data).eq("id", user_id).execute()
+        except Exception as e:
+            raise HTTPException(500, str(e))
+
+    return {"success": True, "updated": list(data.model_dump(exclude_none=True).keys())}
+
+
+@router.get("/api/admin/audit")
+async def admin_audit_log(request: Request):
+    """Admin: son denetim kayıtları."""
+    _require_admin(request)
+    sb = _get_supabase()
+
+    if sb:
+        try:
+            result = sb.table("usage_log").select(
+                "id, user_id, action, metadata, tokens_used, duration_ms, created_at"
+            ).order("created_at", desc=True).limit(100).execute()
+            return {"logs": result.data or [], "total": len(result.data or [])}
+        except Exception as e:
+            raise HTTPException(500, str(e))
+
+    return {"logs": [], "total": 0, "mode": "demo"}
+
+
+# ══════════════════════════════════════
+# 9. PROJE CRUD (Supabase)
+# ══════════════════════════════════════
+
+class ProjectCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    description: str = Field(default="", max_length=1000)
+    il: str = Field(default="")
+    ilce: str = Field(default="")
+
+
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=200)
+    description: Optional[str] = Field(None, max_length=1000)
+    status: Optional[str] = None
+    data: Optional[dict] = None
+    il: Optional[str] = None
+    ilce: Optional[str] = None
+
+
+@router.post("/api/projects")
+async def create_project(data: ProjectCreate, request: Request):
+    """Yeni proje oluştur."""
+    user = _require_user(request)
+    sb = _get_supabase()
+
+    if sb:
+        try:
+            result = sb.table("projects").insert({
+                "user_id": user["user_id"],
+                "name": data.name,
+                "description": data.description,
+                "il": data.il,
+                "ilce": data.ilce,
+            }).execute()
+            if result.data:
+                return {"success": True, "project": result.data[0]}
+        except Exception as e:
+            if "Proje limiti" in str(e):
+                raise HTTPException(403, "Proje limitiniz doldu. Pro plana yükseltin.")
+            raise HTTPException(500, str(e))
+
+    # Demo
+    return {"success": True, "project": {"id": f"demo-{int(time.time())}", "name": data.name}, "mode": "demo"}
+
+
+@router.get("/api/projects")
+async def list_projects(request: Request):
+    """Kullanıcının projelerini listele."""
+    user = _require_user(request)
+    sb = _get_supabase()
+
+    if sb:
+        try:
+            result = sb.table("projects").select("*").eq("user_id", user["user_id"]).order("updated_at", desc=True).execute()
+            return {"projects": result.data or []}
+        except Exception as e:
+            raise HTTPException(500, str(e))
+
+    return {"projects": [], "mode": "demo"}
+
+
+@router.get("/api/projects/{project_id}")
+async def get_project(project_id: str, request: Request):
+    """Tek proje detayı getir."""
+    user = _require_user(request)
+    sb = _get_supabase()
+
+    if sb:
+        try:
+            result = sb.table("projects").select("*").eq("id", project_id).single().execute()
+            if not result.data:
+                raise HTTPException(404, "Proje bulunamadı")
+            # Yetki kontrolü
+            if result.data["user_id"] != user["user_id"]:
+                # Paylaşım kontrolü
+                share = sb.table("project_shares").select("id").eq("project_id", project_id).eq("shared_with", user["user_id"]).execute()
+                if not share.data:
+                    raise HTTPException(403, "Bu projeye erişim yetkiniz yok")
+            return {"project": result.data}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(500, str(e))
+
+    return {"project": None, "mode": "demo"}
+
+
+@router.put("/api/projects/{project_id}")
+async def update_project(project_id: str, data: ProjectUpdate, request: Request):
+    """Proje güncelle."""
+    user = _require_user(request)
+    sb = _get_supabase()
+
+    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+    if not update_data:
+        raise HTTPException(400, "Güncellenecek alan yok")
+
+    if sb:
+        try:
+            result = sb.table("projects").update(update_data).eq("id", project_id).eq("user_id", user["user_id"]).execute()
+            return {"success": True, "updated": list(update_data.keys())}
+        except Exception as e:
+            raise HTTPException(500, str(e))
+
+    return {"success": True, "mode": "demo"}
+
+
+@router.delete("/api/projects/{project_id}")
+async def delete_project(project_id: str, request: Request):
+    """Proje sil."""
+    user = _require_user(request)
+    sb = _get_supabase()
+
+    if sb:
+        try:
+            sb.table("projects").delete().eq("id", project_id).eq("user_id", user["user_id"]).execute()
+            return {"success": True}
+        except Exception as e:
+            raise HTTPException(500, str(e))
+
+    return {"success": True, "mode": "demo"}
+
+
+# ══════════════════════════════════════
+# 10. SİSTEM SAĞLIĞI
+# ══════════════════════════════════════
+
+@router.get("/api/system/health")
+async def system_health():
+    """Detaylı sistem sağlığı — DB, Auth, Cache durumu."""
+    sb = _get_supabase()
+    checks = {
+        "api": "ok",
+        "supabase_configured": bool(sb),
+        "supabase_connected": False,
+        "auth_working": False,
+        "tables_ok": False,
+    }
+
+    if sb:
+        try:
+            # DB bağlantı testi
+            result = sb.table("profiles").select("id", count="exact").limit(0).execute()
+            checks["supabase_connected"] = True
+            checks["tables_ok"] = True
+        except Exception:
+            pass
+
+        try:
+            # Auth testi
+            settings = sb.auth.get_settings() if hasattr(sb.auth, 'get_settings') else None
+            checks["auth_working"] = True
+        except Exception:
+            checks["auth_working"] = checks["supabase_connected"]
+
+    checks["overall"] = "healthy" if all([
+        checks["api"] == "ok",
+        checks["supabase_configured"],
+        checks["supabase_connected"],
+    ]) else "degraded" if checks["api"] == "ok" else "unhealthy"
+
+    return checks

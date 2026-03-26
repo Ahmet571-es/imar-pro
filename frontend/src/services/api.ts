@@ -33,24 +33,68 @@ async function getApiHeaders(): Promise<Record<string, string>> {
   return headers
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  try {
-    const headers = await getApiHeaders()
-    const res = await fetch(`${API_BASE}${path}`, {
-      headers,
-      ...options,
-    })
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ detail: res.statusText }))
-      throw new Error(error.detail || `Sunucu hatası (HTTP ${res.status})`)
-    }
-    return res.json()
-  } catch (e) {
-    if (e instanceof TypeError && e.message.includes('fetch')) {
-      throw new Error('Sunucuya bağlanılamıyor. Backend çalışıyor mu? VITE_API_URL doğru mu?')
-    }
-    throw e
+async function request<T>(path: string, options?: RequestInit, retries = 2): Promise<T> {
+  // Offline detection
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    throw new Error('İnternet bağlantınız yok. Lütfen bağlantınızı kontrol edin.')
   }
+
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const headers = await getApiHeaders()
+      const res = await fetch(`${API_BASE}${path}`, {
+        headers,
+        ...options,
+      })
+
+      // 429 — rate limit
+      if (res.status === 429) {
+        throw new Error('Çok fazla istek gönderildi. Lütfen biraz bekleyin.')
+      }
+
+      // 401 — session expired
+      if (res.status === 401) {
+        // Session refresh dene
+        if (isSupabaseConfigured && attempt === 0) {
+          try {
+            await supabase.auth.refreshSession()
+            continue // Retry with new token
+          } catch { /* fall through */ }
+        }
+        throw new Error('Oturumunuz sona erdi. Lütfen tekrar giriş yapın.')
+      }
+
+      // 403 — forbidden
+      if (res.status === 403) {
+        const error = await res.json().catch(() => ({ detail: 'Yetkiniz yok' }))
+        throw new Error(error.detail || 'Bu işlem için yetkiniz yok.')
+      }
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ detail: res.statusText }))
+        throw new Error(error.detail || `Sunucu hatası (HTTP ${res.status})`)
+      }
+
+      return res.json()
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e))
+
+      // Network error — retry
+      if (e instanceof TypeError && e.message.includes('fetch') && attempt < retries) {
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1))) // Exponential backoff
+        continue
+      }
+
+      // Don't retry non-network errors
+      if (!(e instanceof TypeError && e.message.includes('fetch'))) {
+        throw e
+      }
+    }
+  }
+
+  throw lastError || new Error('Sunucuya bağlanılamıyor. Lütfen tekrar deneyin.')
 }
 
 // ── Parsel API ──
@@ -382,4 +426,151 @@ export async function getHeatLossMap(params: Record<string, unknown>) {
     method: 'POST',
     body: JSON.stringify(params),
   })
+}
+
+// ══════════════════════════════════════
+// SaaS API'leri (Genişletilmiş)
+// ══════════════════════════════════════
+
+// ── Auth ──
+
+export async function requestPasswordReset(email: string) {
+  return request<{ success: boolean; message: string }>('/api/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+export async function updatePassword(newPassword: string) {
+  return request<{ success: boolean }>('/api/user/password', {
+    method: 'PUT',
+    body: JSON.stringify({ new_password: newPassword }),
+  })
+}
+
+// ── Profil ──
+
+export async function getProfile() {
+  return request<Record<string, unknown>>('/api/user/profile')
+}
+
+export async function updateProfile(data: Record<string, unknown>) {
+  return request('/api/user/profile', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function getUsageStats() {
+  return request<Record<string, unknown>>('/api/user/usage')
+}
+
+// ── Organizasyon ──
+
+export async function createOrganization(name: string, slug: string) {
+  return request('/api/org/create', {
+    method: 'POST',
+    body: JSON.stringify({ name, slug }),
+  })
+}
+
+export async function listOrganizations() {
+  return request<{ organizations: Record<string, unknown>[] }>('/api/org/list')
+}
+
+export async function getOrgMembers(orgId: string) {
+  return request<{ members: Record<string, unknown>[] }>(`/api/org/${orgId}/members`)
+}
+
+export async function inviteToOrg(orgId: string, email: string, role = 'member') {
+  return request(`/api/org/${orgId}/invite`, {
+    method: 'POST',
+    body: JSON.stringify({ email, role }),
+  })
+}
+
+export async function acceptInvite(inviteId: string) {
+  return request(`/api/org/invite/${inviteId}/accept`, { method: 'POST' })
+}
+
+export async function rejectInvite(inviteId: string) {
+  return request(`/api/org/invite/${inviteId}/reject`, { method: 'POST' })
+}
+
+// ── Bildirimler ──
+
+export async function getNotifications() {
+  return request<{ notifications: Record<string, unknown>[]; unread_count: number }>('/api/notifications')
+}
+
+export async function markNotificationsRead() {
+  return request('/api/notifications/read-all', { method: 'PUT' })
+}
+
+// ── Proje CRUD (Supabase) ──
+
+export async function createProjectAPI(name: string, description = '', il = '', ilce = '') {
+  return request<{ success: boolean; project: Record<string, unknown> }>('/api/projects', {
+    method: 'POST',
+    body: JSON.stringify({ name, description, il, ilce }),
+  })
+}
+
+export async function listProjectsAPI() {
+  return request<{ projects: Record<string, unknown>[] }>('/api/projects')
+}
+
+export async function getProjectAPI(projectId: string) {
+  return request<{ project: Record<string, unknown> }>(`/api/projects/${projectId}`)
+}
+
+export async function updateProjectAPI(projectId: string, data: Record<string, unknown>) {
+  return request(`/api/projects/${projectId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteProjectAPI(projectId: string) {
+  return request(`/api/projects/${projectId}`, { method: 'DELETE' })
+}
+
+export async function shareProject(projectId: string, email: string, permission = 'view') {
+  return request(`/api/project/${projectId}/share`, {
+    method: 'POST',
+    body: JSON.stringify({ email, permission }),
+  })
+}
+
+export async function getShareLink(projectId: string) {
+  return request<{ share_url: string; token: string }>(`/api/project/${projectId}/share-link`, {
+    method: 'POST',
+  })
+}
+
+// ── Admin ──
+
+export async function getAdminDashboard() {
+  return request<Record<string, unknown>>('/api/admin/dashboard')
+}
+
+export async function getAdminUsers() {
+  return request<{ users: Record<string, unknown>[]; total: number }>('/api/admin/users')
+}
+
+export async function updateAdminUser(userId: string, data: Record<string, unknown>) {
+  return request(`/api/admin/users/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function getAuditLog() {
+  return request<{ logs: Record<string, unknown>[]; total: number }>('/api/admin/audit')
+}
+
+// ── Sistem ──
+
+export async function getSystemHealth() {
+  return request<Record<string, unknown>>('/api/system/health')
 }

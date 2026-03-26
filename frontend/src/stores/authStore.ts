@@ -5,6 +5,8 @@ interface User {
   id: string
   email: string
   name: string
+  role?: string
+  plan?: string
 }
 
 interface AuthState {
@@ -12,28 +14,39 @@ interface AuthState {
   loading: boolean
   error: string | null
   isDemo: boolean
+  initialized: boolean
 
   initialize: () => Promise<void>
   signIn: (email: string, password: string) => Promise<boolean>
   signUp: (email: string, password: string, name: string) => Promise<boolean>
   signOut: () => Promise<void>
   continueAsGuest: () => void
+  resetPassword: (email: string) => Promise<boolean>
+  updateProfile: (data: Partial<{ name: string; company: string; phone: string }>) => Promise<boolean>
+  refreshSession: () => Promise<void>
+  clearError: () => void
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   loading: true,
   error: null,
   isDemo: !isSupabaseConfigured,
+  initialized: false,
 
   initialize: async () => {
+    if (get().initialized) return
+
     if (!isSupabaseConfigured) {
-      // Check localStorage for guest session
       const saved = localStorage.getItem('imar-pro-guest')
       if (saved) {
-        set({ user: JSON.parse(saved), loading: false, isDemo: true })
+        try {
+          set({ user: JSON.parse(saved), loading: false, isDemo: true, initialized: true })
+        } catch {
+          set({ loading: false, isDemo: true, initialized: true })
+        }
       } else {
-        set({ loading: false, isDemo: true })
+        set({ loading: false, isDemo: true, initialized: true })
       }
       return
     }
@@ -48,35 +61,43 @@ export const useAuthStore = create<AuthState>((set) => ({
             name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
           },
           loading: false,
+          initialized: true,
         })
       } else {
-        set({ loading: false })
+        set({ loading: false, initialized: true })
       }
     } catch {
-      set({ loading: false })
+      set({ loading: false, initialized: true })
     }
 
-    // Listen for auth changes
+    // Auth state change listener
     supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         set({
           user: {
             id: session.user.id,
             email: session.user.email || '',
-            name: session.user.user_metadata?.name || '',
+            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
           },
         })
       } else {
         set({ user: null })
       }
     })
+
+    // Session auto-refresh (her 10 dakikada)
+    setInterval(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) await supabase.auth.refreshSession()
+      } catch { /* sessiz */ }
+    }, 600_000)
   },
 
   signIn: async (email, password) => {
     set({ error: null, loading: true })
 
     if (!isSupabaseConfigured) {
-      // Demo login
       const user = { id: 'demo-' + Date.now(), email, name: email.split('@')[0] }
       localStorage.setItem('imar-pro-guest', JSON.stringify(user))
       set({ user, loading: false, isDemo: true })
@@ -86,7 +107,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) {
-        set({ error: error.message, loading: false })
+        const msg = error.message === 'Invalid login credentials'
+          ? 'Email veya şifre hatalı'
+          : error.message === 'Email not confirmed'
+          ? 'Email adresiniz henüz onaylanmamış. Lütfen email kutunuzu kontrol edin.'
+          : error.message
+        set({ error: msg, loading: false })
         return false
       }
       set({ loading: false })
@@ -108,13 +134,16 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
 
     try {
-      const { data, error } = await supabase.auth.signUp({
+      const { error } = await supabase.auth.signUp({
         email,
         password,
         options: { data: { name } },
       })
       if (error) {
-        set({ error: error.message, loading: false })
+        const msg = error.message === 'User already registered'
+          ? 'Bu email adresi zaten kayıtlı. Giriş yapmayı deneyin.'
+          : error.message
+        set({ error: msg, loading: false })
         return false
       }
       set({ loading: false })
@@ -129,6 +158,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (!isSupabaseConfigured) {
       localStorage.removeItem('imar-pro-guest')
       localStorage.removeItem('imar-pro-projects')
+      localStorage.removeItem('imar-pro-onboarding-done')
       set({ user: null })
       return
     }
@@ -141,4 +171,40 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.setItem('imar-pro-guest', JSON.stringify(user))
     set({ user, isDemo: true, loading: false })
   },
+
+  resetPassword: async (email) => {
+    set({ error: null })
+    if (!isSupabaseConfigured) {
+      set({ error: 'Demo modda şifre sıfırlama devre dışı' })
+      return false
+    }
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/`,
+      })
+      if (error) { set({ error: error.message }); return false }
+      return true
+    } catch (e: unknown) {
+      set({ error: e instanceof Error ? e.message : 'Şifre sıfırlama hatası' })
+      return false
+    }
+  },
+
+  updateProfile: async (data) => {
+    if (!isSupabaseConfigured) return true
+    try {
+      const { error } = await supabase.auth.updateUser({ data })
+      if (error) return false
+      const user = get().user
+      if (user && data.name) set({ user: { ...user, name: data.name } })
+      return true
+    } catch { return false }
+  },
+
+  refreshSession: async () => {
+    if (!isSupabaseConfigured) return
+    try { await supabase.auth.refreshSession() } catch { /* sessiz */ }
+  },
+
+  clearError: () => set({ error: null }),
 }))
