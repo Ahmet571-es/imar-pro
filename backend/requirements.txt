@@ -14,3 +14,4 @@ matplotlib>=3.8.0
 PyPDF2>=3.0.0
 sentry-sdk[fastapi]>=2.0.0
 PyJWT>=2.8.0
+ifcopenshell>=0.8.0

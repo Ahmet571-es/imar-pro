@@ -383,5 +383,84 @@ class TestRenderStyles:
         assert len(data) >= 4  # En az 4 stil
 
 
+# ══════════════════════════════════════
+# 14. BIM — IFC, CLASH, MEP
+# ══════════════════════════════════════
+
+class TestBIM:
+    @pytest.fixture
+    def bim_rooms(self):
+        return [
+            {"name": "Salon", "type": "salon", "x": 0, "y": 0, "width": 5.5, "height": 4.2},
+            {"name": "Yatak", "type": "yatak_odasi", "x": 5.7, "y": 0, "width": 3.8, "height": 3.5},
+            {"name": "Mutfak", "type": "mutfak", "x": 0, "y": 4.4, "width": 3.0, "height": 2.8},
+            {"name": "Banyo", "type": "banyo", "x": 3.2, "y": 4.4, "width": 2.3, "height": 2.8},
+        ]
+
+    def test_clash_detection(self, client, bim_rooms):
+        r = client.post("/api/bim/clash-detection", json={"rooms": bim_rooms})
+        assert r.status_code == 200
+        data = r.json()
+        assert "toplam_kontrol" in data
+        assert "cakismalar" in data
+        assert data["toplam_kontrol"] > 0
+
+    def test_mep_schematic(self, client, bim_rooms):
+        r = client.post("/api/bim/mep-schematic", json={
+            "rooms": bim_rooms, "buildable_width": 14, "buildable_height": 10,
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["toplam_node"] > 0
+        assert data["toplam_hat"] > 0
+        assert "disciplines" in data
+        assert "elektrik" in data["disciplines"]
+        assert "su" in data["disciplines"]
+
+    def test_ifc_summary(self, client, bim_rooms):
+        r = client.post("/api/bim/ifc-summary", json={"rooms": bim_rooms, "kat_sayisi": 4})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["schema"] == "IFC4"
+        assert data["entities"]["IfcWall"] == 64  # 4 rooms × 4 walls × 4 floors
+        assert data["entities"]["IfcBuildingStorey"] == 4
+
+    def test_disciplines(self, client):
+        r = client.get("/api/bim/disciplines")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["disciplines"]) == 5
+
+    def test_bim_summary(self, client, bim_rooms):
+        r = client.post("/api/bim/summary", json={
+            "rooms": bim_rooms, "buildable_width": 14, "buildable_height": 10, "kat_sayisi": 4,
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert "ifc" in data
+        assert "clash_detection" in data
+        assert "mep" in data
+        assert data["bim_level"] == "LOD 200"
+
+    def test_clash_min_area(self):
+        """Minimum oda alanı kontrolü."""
+        from analysis.clash_detection import detect_clashes
+        rooms = [{"name": "Mini Banyo", "type": "banyo", "x": 0, "y": 0, "width": 1.5, "height": 1.5}]
+        report = detect_clashes(rooms)
+        # 1.5×1.5 = 2.25m² < 3.5m² minimum
+        assert any(c.severity == "warning" for c in report.clashes)
+
+    def test_mep_cost(self):
+        """MEP maliyet tahmini sıfırdan büyük olmalı."""
+        from analysis.mep_schematic import generate_mep_schematic
+        rooms = [
+            {"name": "Salon", "type": "salon", "x": 0, "y": 0, "width": 5, "height": 4},
+            {"name": "Banyo", "type": "banyo", "x": 5.2, "y": 0, "width": 2.5, "height": 2.5},
+        ]
+        mep = generate_mep_schematic(rooms)
+        data = mep.to_dict()
+        assert data["maliyet_tahmini"]["toplam_tl"] > 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

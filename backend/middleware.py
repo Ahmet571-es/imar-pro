@@ -43,7 +43,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._whitelist = {"/", "/health", "/docs", "/redoc", "/openapi.json",
                           "/api/zoning/defaults", "/api/earthquake/zemin-siniflari",
                           "/api/earthquake/afad-iller", "/api/energy/options",
-                          "/api/render/styles", "/api/feasibility/iller"}
+                          "/api/render/styles", "/api/feasibility/iller",
+                          "/api/bim/disciplines"}
 
     def _get_client_ip(self, request: Request) -> str:
         """Gerçek client IP — proxy arkasında X-Forwarded-For kullan."""

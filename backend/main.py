@@ -25,6 +25,7 @@ from routers.analysis_router import router as analysis_router
 from routers.export_router import router as export_router
 from routers.level6_router import router as level6_router
 from routers.admin_router import router as admin_router
+from routers.bim_router import router as bim_router
 from middleware import RateLimitMiddleware, RequestLoggerMiddleware, setup_sentry
 
 VERSION = "2.1.0"
@@ -84,7 +85,7 @@ app.add_middleware(
 )
 
 # 2. Rate Limiting
-app.add_middleware(RateLimitMiddleware, requests_per_minute=_rpm, burst=20)
+app.add_middleware(RateLimitMiddleware, requests_per_minute=_rpm, burst=50)
 
 # 3. Request Logger + Analytics
 app.add_middleware(RequestLoggerMiddleware)
@@ -100,6 +101,7 @@ app.include_router(analysis_router)
 app.include_router(export_router)
 app.include_router(level6_router)
 app.include_router(admin_router)
+app.include_router(bim_router)
 
 
 @app.get("/")
