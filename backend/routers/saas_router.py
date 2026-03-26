@@ -46,11 +46,12 @@ def _get_user(request: Request) -> dict | None:
     from middleware import verify_supabase_token
     user = verify_supabase_token(request.headers.get("Authorization"))
     if user:
+        user["is_demo"] = False
         return user
     # Demo mod — header'dan user_id al
     demo_id = request.headers.get("X-Demo-User-Id", "")
     if demo_id:
-        return {"user_id": demo_id, "email": "demo@imarpro.dev", "role": "authenticated"}
+        return {"user_id": demo_id, "email": "demo@imarpro.dev", "role": "authenticated", "is_demo": True}
     return None
 
 
@@ -676,7 +677,7 @@ async def create_project(data: ProjectCreate, request: Request):
     user = _require_user(request)
     sb = _get_supabase()
 
-    if sb:
+    if sb and not user.get("is_demo"):
         try:
             result = sb.table("projects").insert({
                 "user_id": user["user_id"],
@@ -702,7 +703,7 @@ async def list_projects(request: Request):
     user = _require_user(request)
     sb = _get_supabase()
 
-    if sb:
+    if sb and not user.get("is_demo"):
         try:
             result = sb.table("projects").select("*").eq("user_id", user["user_id"]).order("updated_at", desc=True).execute()
             return {"projects": result.data or []}
@@ -718,7 +719,7 @@ async def get_project(project_id: str, request: Request):
     user = _require_user(request)
     sb = _get_supabase()
 
-    if sb:
+    if sb and not user.get("is_demo"):
         try:
             result = sb.table("projects").select("*").eq("id", project_id).single().execute()
             if not result.data:
@@ -748,7 +749,7 @@ async def update_project(project_id: str, data: ProjectUpdate, request: Request)
     if not update_data:
         raise HTTPException(400, "Güncellenecek alan yok")
 
-    if sb:
+    if sb and not user.get("is_demo"):
         try:
             result = sb.table("projects").update(update_data).eq("id", project_id).eq("user_id", user["user_id"]).execute()
             return {"success": True, "updated": list(update_data.keys())}
@@ -764,7 +765,7 @@ async def delete_project(project_id: str, request: Request):
     user = _require_user(request)
     sb = _get_supabase()
 
-    if sb:
+    if sb and not user.get("is_demo"):
         try:
             sb.table("projects").delete().eq("id", project_id).eq("user_id", user["user_id"]).execute()
             return {"success": True}
