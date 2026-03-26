@@ -123,6 +123,7 @@ export function PlanStep() {
     parselData, hesaplama, imarParams, setStep, markCompleted, parselTipi,
     planResults, selectedPlanIndex, setPlanResults, setSelectedPlanIndex,
     planFormState, setPlanFormState,
+    earthquakeData,
   } = useProjectStore()
 
   // Form state from store (persisted across sessions)
@@ -139,6 +140,13 @@ export function PlanStep() {
   const [inputMode, setInputMode] = useState<'form' | 'nlp'>('form')
   const [nlpText, setNlpText] = useState('')
   const [showAxisGrid, setShowAxisGrid] = useState(false)
+  const [showKolonGrid, setShowKolonGrid] = useState(false)
+
+  // Extract kolon grid from earthquake data
+  const kolonGrid = (earthquakeData as Record<string, unknown>)?.kolon_grid as {
+    x_akslar: number[]; y_akslar: number[]; kolon_boyut: number[]
+    aks_isimleri_x: string[]; aks_isimleri_y: string[]; kolon_sayisi: number
+  } | null || null
 
   // Read plans from store (type-safe — raw API response)
   const plans: PlanResult[] = (planResults as { plans?: PlanResult[] })?.plans
@@ -513,22 +521,32 @@ export function PlanStep() {
               {/* Left: SVG plan */}
               <div className="lg:col-span-2">
                 <div className="bg-white rounded-xl border border-border p-4">
-                  <div className="flex items-center justify-end gap-2 mb-2">
+                  <div className="flex items-center justify-end gap-3 mb-2">
                     <label className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer">
                       <input type="checkbox" checked={showAxisGrid} onChange={(e) => setShowAxisGrid(e.target.checked)}
                         className="rounded w-3 h-3" />
                       Aks Grid
                     </label>
+                    <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${kolonGrid ? 'text-text-muted' : 'text-text-light'}`}
+                      title={kolonGrid ? 'Deprem analizi kolon grid overlay' : 'Önce Fizibilite adımında deprem analizi çalıştırın'}>
+                      <input type="checkbox" checked={showKolonGrid} onChange={(e) => setShowKolonGrid(e.target.checked)}
+                        className="rounded w-3 h-3" disabled={!kolonGrid} />
+                      Kolon Grid
+                    </label>
                   </div>
-                  <FloorPlanSVG
-                    rooms={activePlan.rooms}
-                    buildableWidth={buildableArea?.width || 14}
-                    buildableHeight={buildableArea?.height || 10}
-                    svgWidth={600}
-                    svgHeight={480}
-                    planName={activePlan.plan_name}
-                    showAxisGrid={showAxisGrid}
-                  />
+                  <div className="floor-plan-svg-container">
+                    <FloorPlanSVG
+                      rooms={activePlan.rooms}
+                      buildableWidth={buildableArea?.width || 14}
+                      buildableHeight={buildableArea?.height || 10}
+                      svgWidth={600}
+                      svgHeight={480}
+                      planName={activePlan.plan_name}
+                      showAxisGrid={showAxisGrid}
+                      showKolonGrid={showKolonGrid}
+                      kolonGrid={kolonGrid}
+                    />
+                  </div>
                 </div>
               </div>
 

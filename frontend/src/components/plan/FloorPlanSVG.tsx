@@ -14,6 +14,15 @@ interface Room {
   windows: { wall: string; position: number; width: number }[]
 }
 
+interface KolonGridData {
+  x_akslar: number[]
+  y_akslar: number[]
+  kolon_boyut: number[]  // [en, boy] metre
+  aks_isimleri_x: string[]
+  aks_isimleri_y: string[]
+  kolon_sayisi: number
+}
+
 interface Props {
   rooms: Room[]
   buildableWidth: number
@@ -23,6 +32,8 @@ interface Props {
   showDimensions?: boolean
   showGrid?: boolean
   showAxisGrid?: boolean
+  showKolonGrid?: boolean
+  kolonGrid?: KolonGridData | null
   planName?: string
 }
 
@@ -64,6 +75,8 @@ export function FloorPlanSVG({
   showDimensions = true,
   showGrid = true,
   showAxisGrid = false,
+  showKolonGrid = false,
+  kolonGrid = null,
   planName,
 }: Props) {
   const { scale, offsetX, offsetY } = useMemo(() => {
@@ -205,6 +218,16 @@ export function FloorPlanSVG({
           </g>
         )
       })}
+
+      {/* Kolon Grid Overlay (structural column grid from earthquake analysis) */}
+      {showKolonGrid && kolonGrid && (
+        <KolonGridOverlay
+          kolonGrid={kolonGrid}
+          tx={tx} ty={ty} ts={ts}
+          bw={buildableWidth} bh={buildableHeight}
+          svgWidth={svgWidth} svgHeight={svgHeight}
+        />
+      )}
 
       {/* Overall dimension lines */}
       {showDimensions && (
@@ -517,4 +540,122 @@ function FurniturePlaceholder({ type, rx, ry, rw, rh }: {
     default:
       return null
   }
+}
+
+function KolonGridOverlay({ kolonGrid, tx, ty, ts, bw, bh, svgWidth, svgHeight }: {
+  kolonGrid: KolonGridData
+  tx: (x: number) => number; ty: (y: number) => number; ts: (s: number) => number
+  bw: number; bh: number; svgWidth: number; svgHeight: number
+}) {
+  const { x_akslar, y_akslar, kolon_boyut, aks_isimleri_x, aks_isimleri_y } = kolonGrid
+  const [kW, kH] = kolon_boyut  // metre cinsinden kolon boyutları
+
+  return (
+    <g className="kolon-grid-overlay">
+      {/* Aks çizgileri — X yönü (dikey) */}
+      {x_akslar.map((x, i) => (
+        <g key={`kx-${i}`}>
+          {/* Aks çizgisi */}
+          <line
+            x1={tx(x)} y1={ty(bh) - 18}
+            x2={tx(x)} y2={ty(0) + 6}
+            stroke="#dc2626" strokeWidth="0.4" strokeDasharray="8 4" opacity={0.5}
+          />
+          {/* Aks baloncuğu (üstte) */}
+          <circle cx={tx(x)} cy={ty(bh) - 24} r="9" fill="#dc2626" opacity="0.12" stroke="#dc2626" strokeWidth="0.7" />
+          <text x={tx(x)} y={ty(bh) - 21} textAnchor="middle" fontSize="8" fontWeight="700"
+            fill="#dc2626" fontFamily="var(--font-display)">
+            {aks_isimleri_x[i] || String.fromCharCode(65 + i)}
+          </text>
+        </g>
+      ))}
+
+      {/* Aks çizgileri — Y yönü (yatay) */}
+      {y_akslar.map((y, i) => (
+        <g key={`ky-${i}`}>
+          <line
+            x1={tx(0) - 6} y1={ty(y)}
+            x2={tx(bw) + 18} y2={ty(y)}
+            stroke="#dc2626" strokeWidth="0.4" strokeDasharray="8 4" opacity={0.5}
+          />
+          {/* Aks baloncuğu (solda) */}
+          <circle cx={tx(bw) + 24} cy={ty(y)} r="9" fill="#dc2626" opacity="0.12" stroke="#dc2626" strokeWidth="0.7" />
+          <text x={tx(bw) + 24} y={ty(y) + 3} textAnchor="middle" fontSize="8" fontWeight="700"
+            fill="#dc2626" fontFamily="var(--font-display)">
+            {aks_isimleri_y[i] || String(i + 1)}
+          </text>
+        </g>
+      ))}
+
+      {/* Kolon noktaları (aks kesişimleri) */}
+      {x_akslar.map((x, xi) =>
+        y_akslar.map((y, yi) => {
+          const kolW = ts(kW)
+          const kolH = ts(kH)
+          const cx = tx(x)
+          const cy = ty(y)
+          return (
+            <g key={`k-${xi}-${yi}`}>
+              {/* Kolon dikdörtgeni (betonarme gösterim) */}
+              <rect
+                x={cx - kolW / 2} y={cy - kolH / 2}
+                width={kolW} height={kolH}
+                fill="#1e293b" opacity={0.65}
+                stroke="#0f172a" strokeWidth="0.5"
+              />
+              {/* Kolon iç çapraz çizgiler (yapısal eleman gösterimi) */}
+              <line
+                x1={cx - kolW / 2 + 1} y1={cy - kolH / 2 + 1}
+                x2={cx + kolW / 2 - 1} y2={cy + kolH / 2 - 1}
+                stroke="white" strokeWidth="0.3" opacity={0.5}
+              />
+              <line
+                x1={cx + kolW / 2 - 1} y1={cy - kolH / 2 + 1}
+                x2={cx - kolW / 2 + 1} y2={cy + kolH / 2 - 1}
+                stroke="white" strokeWidth="0.3" opacity={0.5}
+              />
+            </g>
+          )
+        })
+      )}
+
+      {/* Aks aralık ölçüleri — X yönü (üst) */}
+      {x_akslar.slice(0, -1).map((x, i) => {
+        const x2 = x_akslar[i + 1]
+        const dist = (x2 - x).toFixed(2)
+        const midX = tx((x + x2) / 2)
+        const topY = ty(bh) - 36
+        return (
+          <text key={`dx-${i}`} x={midX} y={topY} textAnchor="middle" fontSize="6" fill="#dc2626"
+            fontFamily="var(--font-mono)" fontWeight="500" opacity={0.7}>
+            {dist}m
+          </text>
+        )
+      })}
+
+      {/* Aks aralık ölçüleri — Y yönü (sağ) */}
+      {y_akslar.slice(0, -1).map((y, i) => {
+        const y2 = y_akslar[i + 1]
+        const dist = (y2 - y).toFixed(2)
+        const midY = ty((y + y2) / 2)
+        const rightX = tx(bw) + 38
+        return (
+          <text key={`dy-${i}`} x={rightX} y={midY + 3} textAnchor="middle" fontSize="6" fill="#dc2626"
+            fontFamily="var(--font-mono)" fontWeight="500" opacity={0.7}
+            transform={`rotate(-90, ${rightX}, ${midY})`}>
+            {dist}m
+          </text>
+        )
+      })}
+
+      {/* Legend */}
+      <g transform={`translate(${svgWidth - 90}, ${svgHeight - 34})`}>
+        <rect x="0" y="0" width="80" height="22" rx="3" fill="white" opacity="0.85" stroke="#dc2626" strokeWidth="0.3" />
+        <rect x="4" y="6" width="6" height="10" fill="#1e293b" opacity="0.65" />
+        <text x="14" y="14" fontSize="6" fill="#dc2626" fontFamily="var(--font-mono)">
+          Kolon {(kW * 100).toFixed(0)}×{(kH * 100).toFixed(0)}cm
+        </text>
+      </g>
+    </g>
+  )
 }
