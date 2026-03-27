@@ -474,6 +474,56 @@ export function PlanStep() {
           ))}
         </div>
 
+        {/* Smart usage warnings */}
+        {hesaplama.kat_basi_net_alan > 0 && (() => {
+          const usagePercent = Math.round((inputTotalM2 / hesaplama.kat_basi_net_alan) * 100)
+          const suggestedTip = hesaplama.kat_basi_net_alan >= 200 ? '5+1'
+            : hesaplama.kat_basi_net_alan >= 160 ? '4+1'
+            : hesaplama.kat_basi_net_alan >= 120 ? '3+1'
+            : hesaplama.kat_basi_net_alan >= 80 ? '2+1' : '1+1'
+
+          if (usagePercent < 70) {
+            const scaleFactor = Math.min((hesaplama.kat_basi_net_alan * 0.82) / inputTotalM2, 1.8)
+            return (
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-sm">
+                <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <span className="text-amber-800">
+                    Plan kullanımı <strong>%{usagePercent}</strong> — oda programı yapılaşma alanının büyük kısmını kullanmıyor.
+                    {suggestedTip !== daireTipi && (
+                      <> Bu alan için <strong>{suggestedTip}</strong> daha uygun olabilir.</>
+                    )}
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    const scaled = odalar.map(o => ({
+                      ...o,
+                      m2: Math.round(o.m2 * scaleFactor * 2) / 2
+                    }))
+                    setOdalar(scaled)
+                    toast.success('Otomatik Ölçekleme', `Odalar %${Math.round(scaleFactor * 100 - 100)} büyütüldü`)
+                  }}
+                  className="shrink-0 text-xs font-medium text-amber-700 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded-md transition-colors"
+                >
+                  Otomatik Büyüt
+                </button>
+              </div>
+            )
+          }
+          if (usagePercent > 95) {
+            return (
+              <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4 text-sm">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <span className="text-red-700">
+                  Plan kullanımı <strong>%{usagePercent}</strong> — duvar kalınlıkları ve sirkülasyon alanı hesaba katılmalı. Oda metrajlarını biraz küçültmeyi deneyin.
+                </span>
+              </div>
+            )
+          }
+          return null
+        })()}
+
         <div className="flex items-center gap-3">
           <button onClick={addOda} className="btn-secondary text-sm flex items-center gap-1.5">
             <Plus className="w-4 h-4" /> Oda Ekle
