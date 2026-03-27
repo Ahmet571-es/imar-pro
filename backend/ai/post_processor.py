@@ -116,7 +116,7 @@ def validate_and_fix(
 
     # ── 5. Dış Cephe Kontrolü + Yön Belirleme ──
     for room in rooms:
-        tol = 0.30  # Dış duvar kalınlığı (0.25m) + tolerans
+        tol = 0.50  # Dış duvar kalınlığı (0.25m) + iç duvar (0.10m) + tolerans
         is_on_edge = (
             room.x <= origin_x + tol or
             room.x + room.width >= origin_x + buildable_width - tol or

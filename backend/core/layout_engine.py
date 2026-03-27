@@ -98,7 +98,7 @@ class PlacedRoom:
             return True
         return False
 
-    def is_on_edge(self, bw: float, bh: float, ox: float = 0, oy: float = 0, tol: float = 0.30) -> bool:
+    def is_on_edge(self, bw: float, bh: float, ox: float = 0, oy: float = 0, tol: float = 0.50) -> bool:
         """Oda yapılaşma kenarında mı?"""
         return (
             self.x <= ox + tol or
@@ -107,7 +107,7 @@ class PlacedRoom:
             self.top >= oy + bh - tol
         )
 
-    def facing_direction(self, bw: float, bh: float, ox: float = 0, oy: float = 0, tol: float = 0.30) -> str:
+    def facing_direction(self, bw: float, bh: float, ox: float = 0, oy: float = 0, tol: float = 0.50) -> str:
         """Odanın baktığı yön (dış kenar)."""
         directions = []
         if self.y <= oy + tol:

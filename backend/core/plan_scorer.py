@@ -200,6 +200,9 @@ def score_plan(
             ext_max += 1.0
             if room.has_exterior_wall:
                 ext_score += (6 - priority) / 5.0
+            elif room.windows:
+                # Penceresi olan oda kısmen dış cepheye erişiyor — yarım puan
+                ext_score += (6 - priority) / 10.0
             else:
                 score.details.append(f"⚠️ {room.name} dış cepheye bakmalı (öncelik: {priority})")
 
