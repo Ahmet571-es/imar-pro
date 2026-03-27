@@ -387,12 +387,12 @@ export function PlanStep() {
                 <MessageSquareText className="w-3 h-3" /> Doğal Dil
               </button>
             </div>
-            <span className="text-text-muted">Net alan:</span>
+            <span className="text-text-muted">Yapılaşma alanı:</span>
             <span className="font-mono font-bold text-primary">{formatNumber(hesaplama.kat_basi_net_alan)} m²</span>
             <span className="text-text-muted">|</span>
-            <span className="text-text-muted">Program:</span>
-            <span className={cn('font-mono font-bold', totalM2 > hesaplama.kat_basi_net_alan ? 'text-danger' : 'text-success')}>
-              {formatNumber(totalM2)} m²
+            <span className="text-text-muted">Plan kullanımı:</span>
+            <span className={cn('font-mono font-bold', totalM2 > hesaplama.kat_basi_net_alan ? 'text-danger' : 'text-primary')}>
+              {formatNumber(totalM2)} m² (%{Math.round((totalM2 / hesaplama.kat_basi_net_alan) * 100)})
             </span>
           </div>
         </div>
