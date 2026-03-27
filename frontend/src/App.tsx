@@ -1,3 +1,4 @@
+// imarPRO v3.1 — auto-deploy enabled
 import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
 import { WizardLayout } from '@/components/layout/WizardLayout'
 import { ParcelStep } from '@/components/parcel/ParcelStep'
