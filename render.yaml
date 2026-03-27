@@ -1,0 +1,32 @@
+# render.yaml — Render Blueprint
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: imarpro-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter  # $7/month, always-on
+    region: frankfurt  # EU — Türkiye'ye en yakın
+    healthCheckPath: /health
+    envVars:
+      # Zorunlu
+      - key: CORS_ORIGIN
+        value: https://balaban-imar.vercel.app
+      - key: SUPABASE_URL
+        sync: false  # Render dashboard'dan girilecek
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      # AI Servisleri (opsiyonel)
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: XAI_API_KEY
+        sync: false
+      # Monitoring & Güvenlik (opsiyonel)
+      - key: SENTRY_DSN
+        sync: false
+      - key: ADMIN_SECRET
+        sync: false
+      - key: RATE_LIMIT_RPM
+        value: "120"
