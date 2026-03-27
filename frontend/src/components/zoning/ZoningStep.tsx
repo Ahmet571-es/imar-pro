@@ -44,16 +44,19 @@ export function ZoningStep() {
   const buildRequest = useCallback(() => {
     if (!parselData) return null
     const base: Record<string, unknown> = {
-      parsel_tipi: parselTipi === 'tkgm' ? 'koordinatlar' : parselTipi,
       yon: parselData.yon,
       ...imarParams,
     }
-    if (parselTipi === 'dikdortgen') {
-      // Reconstruct en/boy from bounds
+    // Dikdörtgen: en/boy gönder, diğer: koordinatlar gönder
+    if (parselTipi === 'dikdortgen' && parselData.bounds?.width && parselData.bounds?.height) {
+      base.parsel_tipi = 'dikdortgen'
       base.en = parselData.bounds.width
       base.boy = parselData.bounds.height
-    } else {
+    } else if (parselData.koordinatlar?.length >= 3) {
+      base.parsel_tipi = 'koordinatlar'
       base.koordinatlar = parselData.koordinatlar.map((c) => ({ x: c.x, y: c.y }))
+    } else {
+      return null
     }
     return base
   }, [parselData, parselTipi, imarParams])
