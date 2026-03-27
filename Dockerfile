@@ -18,4 +18,4 @@ COPY backend/ ./backend/
 EXPOSE 10000
 
 # Start uvicorn
-CMD ["sh", "-c", "cd backend && uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}"]
+CMD ["sh", "-c", "cd backend && uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 2 --timeout-keep-alive 300"]
