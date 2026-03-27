@@ -9,7 +9,17 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 // Demo mode: if no Supabase config, use local storage
 export const isSupabaseConfigured = !!(supabaseUrl && supabaseKey)
 
-// Only create real client if configured — empty URL crashes Supabase SDK
+// Only create real client if configured
+// Demo modda: autoRefreshToken ve persistSession kapalı → arka plan ağ istekleri yok
 export const supabase: SupabaseClient = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseKey)
-  : createClient('https://placeholder.supabase.co', 'placeholder-key')
+  : createClient('https://placeholder.supabase.co', 'placeholder-key', {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false,
+      },
+      global: {
+        fetch: (() => Promise.resolve(new Response('{}', { status: 200 }))) as unknown as typeof fetch,
+      },
+    })
