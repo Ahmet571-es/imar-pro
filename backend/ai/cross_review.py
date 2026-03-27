@@ -30,15 +30,20 @@ Yanıtını SADECE JSON olarak ver:
 
 
 def cross_review(plans: list, claude_api_key: str = "", grok_api_key: str = ""):
-    """Claude planları → Grok eleştirir, Grok planları → Claude eleştirir."""
-    for plan_alt in plans:
+    """Claude planları → Grok eleştirir, Grok planları → Claude eleştirir. PARALEL."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _review_single(plan_alt):
         plan_info = _format_plan_info(plan_alt)
-
         if plan_alt.source == "claude":
-            review = _review_with_grok(plan_info, grok_api_key)
+            return plan_alt, _review_with_grok(plan_info, grok_api_key)
         else:
-            review = _review_with_claude(plan_info, claude_api_key)
+            return plan_alt, _review_with_claude(plan_info, claude_api_key)
 
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = list(executor.map(_review_single, plans))
+
+    for plan_alt, review in results:
         if review:
             plan_alt.cross_review_score = review.get("score", 60)
             strengths = review.get("strengths", [])
@@ -79,7 +84,7 @@ def _review_with_claude(plan_info: str, api_key: str) -> dict | None:
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
-            model="claude-opus-4-20250514",
+            model="claude-sonnet-4-20250514",
             max_tokens=1024,
             messages=[{"role": "user", "content": REVIEW_PROMPT.format(plan_info=plan_info)}],
         )

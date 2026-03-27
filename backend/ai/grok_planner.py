@@ -102,7 +102,7 @@ def generate_plans_grok(
                 ],
                 "store": False,
             },
-            timeout=120,
+            timeout=60,
         )
         resp.raise_for_status()
         result = resp.json()

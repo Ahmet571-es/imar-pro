@@ -129,11 +129,15 @@ def generate_dual_ai_plans(
         result.iteration = iteration
         logger.info(f"=== Dual AI İterasyon {iteration}/{max_iterations} ===")
 
-        # ── KATMAN 1: AI Plan Üretimi (API key varsa) ──
+        # ── KATMAN 1: AI Plan Üretimi (PARALEL — Claude + Grok aynı anda) ──
 
-        if claude_api_key:
-            try:
-                claude_plans = generate_plans_claude(
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        ai_futures = {}
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            if claude_api_key:
+                ai_futures['claude'] = executor.submit(
+                    generate_plans_claude,
                     polygon_coords=buildable_polygon_coords,
                     apartment_program=apartment_program,
                     dataset_rules=dataset_rules,
@@ -142,21 +146,10 @@ def generate_dual_ai_plans(
                     plan_count=2,
                     previous_feedback=_get_feedback(result.best_plans) if iteration > 1 else None,
                 )
-                for p in claude_plans:
-                    result.all_plans.append(PlanAlternatif(
-                        plan=p["floor_plan"],
-                        source="claude",
-                        plan_name=p.get("plan_name", "Claude Plan"),
-                        strategy=p.get("strategy", ""),
-                        reasoning=p.get("reasoning", ""),
-                    ))
-                logger.info(f"Claude: {len(claude_plans)} plan üretildi")
-            except Exception as e:
-                logger.error(f"Claude hata: {e}")
 
-        if grok_api_key:
-            try:
-                grok_plans = generate_plans_grok(
+            if grok_api_key:
+                ai_futures['grok'] = executor.submit(
+                    generate_plans_grok,
                     polygon_coords=buildable_polygon_coords,
                     apartment_program=apartment_program,
                     dataset_rules=dataset_rules,
@@ -165,17 +158,21 @@ def generate_dual_ai_plans(
                     plan_count=2,
                     previous_feedback=_get_feedback(result.best_plans) if iteration > 1 else None,
                 )
-                for p in grok_plans:
-                    result.all_plans.append(PlanAlternatif(
-                        plan=p["floor_plan"],
-                        source="grok",
-                        plan_name=p.get("plan_name", "Grok Plan"),
-                        strategy=p.get("strategy", ""),
-                        reasoning=p.get("reasoning", ""),
-                    ))
-                logger.info(f"Grok: {len(grok_plans)} plan üretildi")
-            except Exception as e:
-                logger.error(f"Grok hata: {e}")
+
+            for source, future in ai_futures.items():
+                try:
+                    plans = future.result(timeout=90)  # 90s max per AI
+                    for p in plans:
+                        result.all_plans.append(PlanAlternatif(
+                            plan=p["floor_plan"],
+                            source=source,
+                            plan_name=p.get("plan_name", f"{source.title()} Plan"),
+                            strategy=p.get("strategy", ""),
+                            reasoning=p.get("reasoning", ""),
+                        ))
+                    logger.info(f"{source.title()}: {len(plans)} plan üretildi")
+                except Exception as e:
+                    logger.error(f"{source.title()} hata: {e}")
 
         # ── KATMAN 1b: Layout Engine bağımsız stratejiler ──
         try:
