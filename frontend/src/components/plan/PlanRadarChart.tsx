@@ -155,7 +155,7 @@ export function PlanRadarChart({ plans }: Props) {
                       {bestIdx >= 0 && (
                         <span className="inline-flex items-center gap-1 font-semibold" style={{ color: PLAN_COLORS[bestIdx % PLAN_COLORS.length] }}>
                           <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: PLAN_COLORS[bestIdx % PLAN_COLORS.length] }} />
-                          {plans[bestIdx]?.plan_name?.replace(/\s*\(.*\)/, '').substring(0, 8)}
+                          {plans[bestIdx]?.plan_name?.replace(/\s*\(.*\)/, '')}
                         </span>
                       )}
                     </td>

@@ -67,7 +67,7 @@ export function StepNavigation() {
                   )}
                 </div>
                 <div className="hidden md:flex flex-col items-start">
-                  <span className="text-xs opacity-60">Adim {i + 1}</span>
+                  <span className="text-xs opacity-60">Adım {i + 1}</span>
                   <span className="leading-tight">{step.labelTr}</span>
                 </div>
               </button>
@@ -84,23 +84,23 @@ export function StepNavigation() {
         })}
           {/* Completion badge */}
           {completionPercent > 0 && completionPercent < 100 && (
-            <div className="ml-2 flex items-center gap-1.5 shrink-0 bg-surface-alt rounded-full px-2.5 py-1">
-              <div className="w-16 h-1.5 bg-border/40 rounded-full overflow-hidden">
+            <div className="ml-2 inline-flex items-center gap-1.5 shrink-0 bg-primary/10 border border-primary/20 rounded-full px-3 py-1 shadow-sm">
+              <div className="w-14 h-1.5 bg-primary/20 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-primary rounded-full transition-all duration-500 ease-out"
                   style={{ width: `${completionPercent}%` }}
                 />
               </div>
-              <span className="text-[10px] text-text-muted font-medium tabular-nums">
-                %{completionPercent}
+              <span className="text-[11px] text-primary font-semibold tabular-nums whitespace-nowrap">
+                {`%${completionPercent}`}
               </span>
             </div>
           )}
           {completionPercent === 100 && (
-            <div className="ml-2 flex items-center gap-1 shrink-0 bg-success/10 rounded-full px-2.5 py-1">
-              <Check className="w-3 h-3 text-success" />
-              <span className="text-[10px] text-success font-semibold">
-                Tamamlandi
+            <div className="ml-2 inline-flex items-center gap-1 shrink-0 bg-success/10 border border-success/20 rounded-full px-3 py-1 shadow-sm">
+              <Check className="w-3.5 h-3.5 text-success" />
+              <span className="text-[11px] text-success font-bold whitespace-nowrap">
+                Tamamlandı
               </span>
             </div>
           )}
