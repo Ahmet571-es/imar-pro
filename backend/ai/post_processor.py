@@ -114,15 +114,27 @@ def validate_and_fix(
                 f"{room.name}: aşırı dar ({room.width:.1f}×{room.height:.1f}, oran={ar:.2f})"
             )
 
-    # ── 5. Dış Cephe Kontrolü ──
+    # ── 5. Dış Cephe Kontrolü + Yön Belirleme ──
     for room in rooms:
+        tol = 0.30  # Dış duvar kalınlığı (0.25m) + tolerans
         is_on_edge = (
-            room.x <= origin_x + 0.15 or
-            room.x + room.width >= origin_x + buildable_width - 0.15 or
-            room.y <= origin_y + 0.15 or
-            room.y + room.height >= origin_y + buildable_height - 0.15
+            room.x <= origin_x + tol or
+            room.x + room.width >= origin_x + buildable_width - tol or
+            room.y <= origin_y + tol or
+            room.y + room.height >= origin_y + buildable_height - tol
         )
         room.has_exterior_wall = is_on_edge
+
+        # facing_direction güncelle (güneş optimizasyonu puanı için gerekli)
+        if is_on_edge and not room.facing_direction:
+            if room.y <= origin_y + tol:
+                room.facing_direction = "south"
+            elif room.y + room.height >= origin_y + buildable_height - tol:
+                room.facing_direction = "north"
+            elif room.x <= origin_x + tol:
+                room.facing_direction = "west"
+            elif room.x + room.width >= origin_x + buildable_width - tol:
+                room.facing_direction = "east"
 
     if result.code_violations:
         result.is_valid = False

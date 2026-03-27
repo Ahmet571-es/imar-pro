@@ -376,7 +376,7 @@ export function FeasibilityStep() {
                     {data.gelir.daireler.map((d) => (
                       <tr key={d.daire_no} className="border-b border-border/50 hover:bg-surface-alt">
                         <td className="py-1.5 font-mono">{d.daire_no}</td>
-                        <td className="py-1.5">{d.kat === 1 ? 'Zemin' : `Kat ${d.kat}`}</td>
+                        <td className="py-1.5">{d.kat === 1 ? 'Zemin' : `Kat ${d.kat - 1}`}</td>
                         <td className="py-1.5 text-right font-mono">{d.net_alan}m²</td>
                         <td className="py-1.5 text-right font-mono text-text-muted">{d.kat_primi_pct > 0 ? '+' : ''}{d.kat_primi_pct}%</td>
                         <td className="py-1.5 text-right font-mono font-bold">₺{fmt(d.satis_fiyati)}</td>

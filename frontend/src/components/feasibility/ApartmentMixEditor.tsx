@@ -380,7 +380,7 @@ export function ApartmentMixEditor({ katAdedi, katBasiBrutAlan, m2SatisFiyati, o
                 {summary.daireDetay.map((d, i) => (
                   <tr key={i} className={cn('border-t border-border/30', i % 2 === 0 ? '' : 'bg-surface-alt/20')}>
                     <td className="px-2 py-1 text-text-muted">{d.daireNo}</td>
-                    <td className="px-2 py-1">{d.kat === 1 ? 'Zemin' : `Kat ${d.kat}`}</td>
+                    <td className="px-2 py-1">{d.kat === 1 ? 'Zemin' : `Kat ${d.kat - 1}`}</td>
                     <td className="px-2 py-1 font-semibold">{d.tip}</td>
                     <td className="px-2 py-1 text-right font-mono">{d.brutAlan}</td>
                     <td className="px-2 py-1 text-right font-mono">{d.netAlan}</td>
