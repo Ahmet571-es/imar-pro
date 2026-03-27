@@ -52,6 +52,10 @@ function AppContent() {
   useEffect(() => {
     initialize()
     loadFromStorage()
+
+    // Backend warm-up — Railway cold start'ı önle
+    // Arka planda /health'e ping atarak backend'i uyandır
+    fetch('/api/bim/disciplines').catch(() => {})
   }, [initialize, loadFromStorage])
 
   // Set view based on auth state — check onboarding

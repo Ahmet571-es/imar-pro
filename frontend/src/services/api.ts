@@ -33,7 +33,7 @@ async function getApiHeaders(): Promise<Record<string, string>> {
   return headers
 }
 
-async function request<T>(path: string, options?: RequestInit, retries = 2): Promise<T> {
+async function request<T>(path: string, options?: RequestInit, retries = 3): Promise<T> {
   // Offline detection
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     throw new Error('İnternet bağlantınız yok. Lütfen bağlantınızı kontrol edin.')
@@ -49,6 +49,13 @@ async function request<T>(path: string, options?: RequestInit, retries = 2): Pro
         ...options,
       })
 
+      // 502/503/504 — backend uyuyor veya restart, retry
+      if ((res.status === 502 || res.status === 503 || res.status === 504) && attempt < retries) {
+        console.warn(`Backend ${res.status} — retry ${attempt + 1}/${retries} (${path})`)
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)))
+        continue
+      }
+
       // 429 — rate limit
       if (res.status === 429) {
         throw new Error('Çok fazla istek gönderildi. Lütfen biraz bekleyin.')
@@ -56,11 +63,10 @@ async function request<T>(path: string, options?: RequestInit, retries = 2): Pro
 
       // 401 — session expired
       if (res.status === 401) {
-        // Session refresh dene
         if (isSupabaseConfigured && attempt === 0) {
           try {
             await supabase.auth.refreshSession()
-            continue // Retry with new token
+            continue
           } catch { /* fall through */ }
         }
         throw new Error('Oturumunuz sona erdi. Lütfen tekrar giriş yapın.')
@@ -83,7 +89,7 @@ async function request<T>(path: string, options?: RequestInit, retries = 2): Pro
 
       // Network error — retry
       if (e instanceof TypeError && e.message.includes('fetch') && attempt < retries) {
-        await new Promise(r => setTimeout(r, 1000 * (attempt + 1))) // Exponential backoff
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)))
         continue
       }
 
