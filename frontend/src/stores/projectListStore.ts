@@ -1,5 +1,11 @@
 import { create } from 'zustand'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
+import { useAuthStore } from '@/stores/authStore'
+
+/** Supabase gerçekten kullanılabilir mi? (yapılandırılmış VE kullanıcı gerçek oturum açmış) */
+function shouldUseSupabase(): boolean {
+  return isSupabaseConfigured && !useAuthStore.getState().isDemo
+}
 
 export interface SavedProject {
   id: string
@@ -27,10 +33,10 @@ export const useProjectListStore = create<ProjectListState>((set, get) => ({
   fetchProjects: async (userId) => {
     set({ loadingProjects: true })
 
-    if (!isSupabaseConfigured) {
+    if (!shouldUseSupabase()) {
       const raw = localStorage.getItem('imar-pro-projects')
       const all: SavedProject[] = raw ? JSON.parse(raw) : []
-      // Demo mode: show all local projects (no user isolation needed)
+      // Demo/guest mode: show all local projects (no user isolation needed)
       set({ projects: all, loadingProjects: false })
       return
     }
@@ -66,7 +72,7 @@ export const useProjectListStore = create<ProjectListState>((set, get) => ({
     const now = new Date().toISOString()
     const project: SavedProject = { id, name, created_at: now, updated_at: now, data: { ...data, userId } }
 
-    if (!isSupabaseConfigured) {
+    if (!shouldUseSupabase()) {
       const raw = localStorage.getItem('imar-pro-projects')
       const all: SavedProject[] = raw ? JSON.parse(raw) : []
       all.unshift(project)
@@ -100,7 +106,7 @@ export const useProjectListStore = create<ProjectListState>((set, get) => ({
   updateProject: async (projectId, data) => {
     const now = new Date().toISOString()
 
-    if (!isSupabaseConfigured) {
+    if (!shouldUseSupabase()) {
       const raw = localStorage.getItem('imar-pro-projects')
       const all: SavedProject[] = raw ? JSON.parse(raw) : []
       const idx = all.findIndex((p) => p.id === projectId)
@@ -130,7 +136,7 @@ export const useProjectListStore = create<ProjectListState>((set, get) => ({
   },
 
   deleteProject: async (projectId) => {
-    if (!isSupabaseConfigured) {
+    if (!shouldUseSupabase()) {
       const raw = localStorage.getItem('imar-pro-projects')
       const all: SavedProject[] = raw ? JSON.parse(raw) : []
       const filtered = all.filter((p) => p.id !== projectId)
