@@ -301,7 +301,6 @@ export function PlanStep() {
 
     try {
       const params: Record<string, unknown> = {
-        parsel_tipi: parselTipi === 'tkgm' ? 'koordinatlar' : parselTipi,
         yon: parselData.yon,
         kat_adedi: imarParams.kat_adedi,
         taks: imarParams.taks,
@@ -315,11 +314,18 @@ export function PlanStep() {
         sun_direction: sunDir,
       }
 
-      if (parselTipi === 'dikdortgen') {
+      // Dikdörtgen: en/boy gönder, diğer: koordinatlar gönder
+      if (parselTipi === 'dikdortgen' && parselData.bounds?.width && parselData.bounds?.height) {
+        params.parsel_tipi = 'dikdortgen'
         params.en = parselData.bounds.width
         params.boy = parselData.bounds.height
-      } else {
+      } else if (parselData.koordinatlar?.length >= 3) {
+        params.parsel_tipi = 'koordinatlar'
         params.koordinatlar = parselData.koordinatlar.map((c) => ({ x: c.x, y: c.y }))
+      } else {
+        toast.error('Parsel Hatası', 'Parsel verisi eksik, lütfen parsel adımına dönün')
+        setLoading(false)
+        return
       }
 
       const result = await generatePlan(params) as {
