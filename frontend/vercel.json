@@ -1,6 +1,6 @@
 {
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://web-production-bfa77.up.railway.app/api/:path*" },
+    { "source": "/api/:path*", "destination": "https://imar-pro.onrender.com/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
