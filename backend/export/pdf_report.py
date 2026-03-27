@@ -52,12 +52,24 @@ logger = logging.getLogger(__name__)
 
 def _register_fonts():
     """DejaVu Sans fontunu kaydet — Türkçe İ,Ş,Ç,Ö,Ü,Ğ desteği."""
+    # Bundled font (repo içinde) EN ÖNCELİKLİ
+    bundled = os.path.join(os.path.dirname(__file__), '..', 'fonts', 'DejaVuSans.ttf')
+
     font_paths = [
+        bundled,  # repo/backend/fonts/ — her zaman çalışır
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         '/usr/share/fonts/dejavu/DejaVuSans.ttf',
         '/usr/local/share/fonts/DejaVuSans.ttf',
-        os.path.join(os.path.dirname(__file__), '..', 'fonts', 'DejaVuSans.ttf'),
     ]
+
+    # Matplotlib font path'ini de ekle
+    try:
+        import matplotlib
+        mpl_font = os.path.join(os.path.dirname(matplotlib.__file__), 'mpl-data', 'fonts', 'ttf', 'DejaVuSans.ttf')
+        font_paths.append(mpl_font)
+    except ImportError:
+        pass
+
     for path in font_paths:
         if os.path.exists(path):
             try:
@@ -65,26 +77,12 @@ def _register_fonts():
                 bold_path = path.replace('DejaVuSans.ttf', 'DejaVuSans-Bold.ttf')
                 if os.path.exists(bold_path):
                     pdfmetrics.registerFont(TTFont('DejaVu-Bold', bold_path))
+                logger.info(f"DejaVu font yüklendi: {path}")
                 return 'DejaVu'
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Font yükleme hatası ({path}): {e}")
 
-    # Fallback: Download DejaVu fonts if not found
-    try:
-        import urllib.request
-        font_dir = os.path.join(os.path.dirname(__file__), '..', 'fonts')
-        os.makedirs(font_dir, exist_ok=True)
-        base_url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf"
-        for fname in ['DejaVuSans.ttf', 'DejaVuSans-Bold.ttf']:
-            dest = os.path.join(font_dir, fname)
-            if not os.path.exists(dest):
-                urllib.request.urlretrieve(f"{base_url}/{fname}", dest)
-        pdfmetrics.registerFont(TTFont('DejaVu', os.path.join(font_dir, 'DejaVuSans.ttf')))
-        pdfmetrics.registerFont(TTFont('DejaVu-Bold', os.path.join(font_dir, 'DejaVuSans-Bold.ttf')))
-        return 'DejaVu'
-    except Exception:
-        pass
-
+    logger.warning("DejaVu font bulunamadı — Helvetica kullanılacak (Türkçe karakterler bozuk olabilir)")
     return 'Helvetica'
 
 FONT_NAME = _register_fonts()

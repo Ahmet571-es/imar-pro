@@ -10,7 +10,6 @@ frontend/dist/
 *.egg-info/
 
 # Runtime caches
-backend/fonts/
 /tmp/imar-pro-exports/
 
 # Environment
