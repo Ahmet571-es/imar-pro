@@ -1,4 +1,4 @@
-// imarPRO v3.1 — auto-deploy enabled
+// imarPRO v3.2 — Supabase auth enabled
 import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
 import { WizardLayout } from '@/components/layout/WizardLayout'
 import { ParcelStep } from '@/components/parcel/ParcelStep'
