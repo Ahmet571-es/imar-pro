@@ -94,9 +94,9 @@ export function AuthPage() {
               {mode === 'login' ? 'Projelerinize erişin' : mode === 'register' ? 'Ücretsiz hesabınızı oluşturun' : 'E-posta adresinize sıfırlama linki göndereceğiz'}
             </p>
 
-            {isDemo && (
+            {isDemo && mode !== 'login' && mode !== 'register' ? null : isDemo && (
               <div className="bg-accent/10 border border-accent/30 rounded-lg px-3 py-2 text-xs text-text-muted mb-4">
-                ℹ️ Demo mod aktif. Gerçek hesap için Supabase yapılandırılmalıdır.
+                Demo mod aktif — kayıt ve giriş yerine <strong>"Misafir Olarak Devam Et"</strong> kullanabilirsiniz.
               </div>
             )}
 

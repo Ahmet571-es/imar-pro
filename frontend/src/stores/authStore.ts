@@ -1,6 +1,18 @@
 import { create } from 'zustand'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 
+/** Supabase İngilizce hata mesajlarını Türkçeye çevir */
+function turkishError(msg: string): string {
+  const map: Record<string, string> = {
+    'Password should be at least 6 characters': 'Şifre en az 6 karakter olmalıdır',
+    'Unable to validate email address: invalid format': 'Geçersiz email formatı',
+    'Signup requires a valid password': 'Geçerli bir şifre gerekli',
+    'To signup, please provide your email': 'Kayıt için email adresinizi girin',
+    'User already registered': 'Bu email zaten kayıtlı',
+  }
+  return map[msg] || msg
+}
+
 interface User {
   id: string
   email: string
@@ -111,7 +123,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           ? 'Email veya şifre hatalı'
           : error.message === 'Email not confirmed'
           ? 'Email adresiniz henüz onaylanmamış. Lütfen email kutunuzu kontrol edin.'
-          : error.message
+          : error.message.includes('fetch')
+          ? 'Sunucuya bağlanılamadı. Lütfen tekrar deneyin.'
+          : turkishError(error.message)
         set({ error: msg, loading: false })
         return false
       }
@@ -142,7 +156,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (error) {
         const msg = error.message === 'User already registered'
           ? 'Bu email adresi zaten kayıtlı. Giriş yapmayı deneyin.'
-          : error.message
+          : error.message.includes('Email address') && error.message.includes('invalid')
+          ? 'Geçersiz email adresi. Lütfen doğru bir email girin.'
+          : error.message.includes('fetch')
+          ? 'Sunucuya bağlanılamadı. Lütfen tekrar deneyin.'
+          : turkishError(error.message)
         set({ error: msg, loading: false })
         return false
       }
