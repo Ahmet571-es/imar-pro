@@ -65,7 +65,7 @@ export function WizardLayout({ children, onBackToProjects }: Props) {
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             onClick={onBackToProjects}
-            className="p-1.5 hover:bg-white/10 rounded-lg transition-colors shrink-0"
+            className="p-2 hover:bg-white/10 rounded-lg transition-colors shrink-0"
             title="Projelere Dön"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -141,7 +141,7 @@ export function WizardLayout({ children, onBackToProjects }: Props) {
               <div className="flex items-center gap-1.5 text-xs text-white/60 ml-1">
                 <User className="w-3.5 h-3.5" />
                 <span>{user.name}</span>
-                {isDemo && <span className="text-[9px] bg-accent/30 text-accent px-1 py-0.5 rounded">Demo</span>}
+                {isDemo && <span className="text-[10px] bg-accent/30 text-accent px-1 py-0.5 rounded">Demo</span>}
               </div>
             )}
 
@@ -181,7 +181,7 @@ export function WizardLayout({ children, onBackToProjects }: Props) {
             <div className="flex items-center gap-2 px-3 py-2 text-xs text-white/50">
               <User className="w-3.5 h-3.5" />
               {user.name}
-              {isDemo && <span className="text-[9px] bg-accent/30 text-accent px-1 py-0.5 rounded">Demo</span>}
+              {isDemo && <span className="text-[10px] bg-accent/30 text-accent px-1 py-0.5 rounded">Demo</span>}
             </div>
           )}
           <button onClick={() => { signOut(); setMobileMenuOpen(false) }}

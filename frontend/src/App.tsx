@@ -55,20 +55,24 @@ function AppContent() {
   }, [initialize, loadFromStorage])
 
   // Set view based on auth state — check onboarding
+  // Only redirect on auth state changes, not on every view change
   useEffect(() => {
-    if (!loading && view !== 'landing' && view !== 'legal') {
+    if (!loading) {
       if (user) {
         // Onboarding kontrolü — ilk girişte göster
         const onboardingDone = localStorage.getItem('imar-pro-onboarding-done')
         if (!onboardingDone) {
           setShowOnboarding(true)
         }
-        setView('projects')
-      } else {
+        // Only redirect to projects if currently on auth or landing
+        if (view === 'auth' || view === 'landing') {
+          setView('projects')
+        }
+      } else if (view !== 'landing' && view !== 'legal') {
         setView('auth')
       }
     }
-  }, [user, loading, view])
+  }, [user, loading])
 
   // Ctrl+S keyboard shortcut for save
   const handleSave = useCallback(async () => {

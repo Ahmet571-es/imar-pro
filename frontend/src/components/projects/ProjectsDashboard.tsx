@@ -156,7 +156,7 @@ export function ProjectsDashboard({ onOpenProject, onOpenAdmin }: Props) {
               <User className="w-4 h-4 text-white/60" />
               <span className="text-sm max-w-[120px] truncate">{user?.name || user?.email}</span>
               {isDemo && (
-                <span className="text-[9px] bg-accent/30 text-accent px-1.5 py-0.5 rounded-full">Demo</span>
+                <span className="text-[10px] bg-accent/30 text-accent px-1.5 py-0.5 rounded-full">Demo</span>
               )}
             </div>
             <button onClick={signOut} className="p-2 hover:bg-white/10 rounded-lg transition-colors"
