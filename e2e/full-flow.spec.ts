@@ -163,6 +163,8 @@ test.describe('API — Backend Endpointleri', () => {
 test.describe('Mobile — Responsive', () => {
 
   test('13 — Mobil overflow yok', async ({ page }) => {
+    const vp = page.viewportSize()
+    test.skip(!vp || vp.width > 400, 'Sadece mobile viewport')
     await page.goto('/', { waitUntil: 'domcontentloaded' })
     await page.waitForTimeout(3000)
     const w = await page.evaluate(() => document.body.scrollWidth)
