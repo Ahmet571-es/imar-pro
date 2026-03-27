@@ -162,7 +162,9 @@ export function PlanStep() {
     }
   }, [planResults])
 
-  const totalM2 = odalar.reduce((s, o) => s + o.m2, 0)
+  const inputTotalM2 = odalar.reduce((s, o) => s + o.m2, 0)
+  const activePlan = plans[selectedPlan]
+  const totalM2 = activePlan?.total_area ?? inputTotalM2
 
   const handleDaireTipiChange = (tip: string) => {
     setPlanFormState({ daireTipi: tip, odalar: DEFAULT_ODALAR[tip] || DEFAULT_ODALAR['3+1'] })
@@ -354,8 +356,6 @@ export function PlanStep() {
       </div>
     )
   }
-
-  const activePlan = plans[selectedPlan]
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">

@@ -78,7 +78,7 @@ export function WizardLayout({ children, onBackToProjects }: Props) {
               <h1 className="text-sm sm:text-base font-bold tracking-tight leading-none truncate">
                 {currentProjectName || 'imarPRO'}
               </h1>
-              {isDirty && (
+              {isDirty && currentProjectId && (
                 <span className="w-2 h-2 rounded-full bg-accent animate-pulse" title="Kaydedilmemiş değişiklikler" />
               )}
             </div>

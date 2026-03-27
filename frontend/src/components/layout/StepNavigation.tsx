@@ -67,7 +67,7 @@ export function StepNavigation() {
                   )}
                 </div>
                 <div className="hidden md:flex flex-col items-start">
-                  <span className="text-xs opacity-60">Adım {i + 1}</span>
+                  <span className="text-xs opacity-60">Adim {i + 1}</span>
                   <span className="leading-tight">{step.labelTr}</span>
                 </div>
               </button>
@@ -82,18 +82,29 @@ export function StepNavigation() {
             </div>
           )
         })}
+          {/* Completion badge */}
+          {completionPercent > 0 && completionPercent < 100 && (
+            <div className="ml-2 flex items-center gap-1.5 shrink-0 bg-surface-alt rounded-full px-2.5 py-1">
+              <div className="w-16 h-1.5 bg-border/40 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${completionPercent}%` }}
+                />
+              </div>
+              <span className="text-[10px] text-text-muted font-medium tabular-nums">
+                %{completionPercent}
+              </span>
+            </div>
+          )}
+          {completionPercent === 100 && (
+            <div className="ml-2 flex items-center gap-1 shrink-0 bg-success/10 rounded-full px-2.5 py-1">
+              <Check className="w-3 h-3 text-success" />
+              <span className="text-[10px] text-success font-semibold">
+                Tamamlandi
+              </span>
+            </div>
+          )}
         </div>
-        {/* Completion % */}
-        {completionPercent > 0 && completionPercent < 100 && (
-          <div className="ml-2 text-[10px] text-text-muted font-mono shrink-0">
-            %{completionPercent}
-          </div>
-        )}
-        {completionPercent === 100 && (
-          <div className="ml-2 text-[10px] text-success font-semibold shrink-0">
-            ✓ Tamamlandı
-          </div>
-        )}
       </div>
     </nav>
   )
