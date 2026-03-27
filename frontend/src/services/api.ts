@@ -86,7 +86,16 @@ async function request<T>(path: string, options?: RequestInit, retries = 3): Pro
 
       if (!res.ok) {
         const error = await res.json().catch(() => ({ detail: res.statusText }))
-        throw new Error(error.detail || `Sunucu hatası (HTTP ${res.status})`)
+        // FastAPI validation errors return detail as array of objects
+        let message: string
+        if (Array.isArray(error.detail)) {
+          message = error.detail.map((d: { msg?: string; loc?: string[] }) =>
+            d.msg ? `${d.msg}${d.loc ? ` (${d.loc.join('.')})` : ''}` : JSON.stringify(d)
+          ).join('; ')
+        } else {
+          message = error.detail || `Sunucu hatası (HTTP ${res.status})`
+        }
+        throw new Error(message)
       }
 
       return res.json()

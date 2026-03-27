@@ -108,29 +108,48 @@ export function ThreeDStep() {
       setLoading(true)
       try {
         const rooms = planRooms.map((r) => ({
-          name: r.name, type: r.type,
-          x: r.x, y: r.y,
-          width: r.width, height: r.height,
-          is_exterior: r.is_exterior, facing: r.facing,
-        }))
+          name: r.name || 'Oda',
+          type: r.type || 'diger',
+          x: Number(r.x) || 0,
+          y: Number(r.y) || 0,
+          width: Number(r.width) || 3,
+          height: Number(r.height) || 3,
+          is_exterior: Boolean(r.is_exterior),
+          facing: r.facing || '',
+        })).filter(r => r.width > 0 && r.height > 0)
+
+        if (rooms.length === 0) {
+          toast.warning('3D Model', 'Plan verisi bulunamadı — önce plan üretin')
+          setLoading(false)
+          return
+        }
+
+        // Safe buildable dimensions
+        let bw = parselData.bounds.width - imarParams.on_bahce - imarParams.arka_bahce
+        let bh = parselData.bounds.height - 2 * imarParams.yan_bahce
+        if (hesaplama.cekme_polygon_coords && Array.isArray(hesaplama.cekme_polygon_coords) && hesaplama.cekme_polygon_coords.length >= 3) {
+          const xs = hesaplama.cekme_polygon_coords.map((c: { x: number }) => c.x)
+          const ys = hesaplama.cekme_polygon_coords.map((c: { y: number }) => c.y)
+          bw = Math.max(...xs) - Math.min(...xs)
+          bh = Math.max(...ys) - Math.min(...ys)
+        }
+        if (!bw || !isFinite(bw) || bw <= 0) bw = 14
+        if (!bh || !isFinite(bh) || bh <= 0) bh = 10
 
         const data = await getBuildingData({
           rooms,
           kat_adedi: imarParams.kat_adedi,
           kat_yuksekligi: 3.0,
           toplam_maliyet: totalCost,
-          buildable_width: hesaplama.cekme_polygon_coords
-            ? Math.max(...hesaplama.cekme_polygon_coords.map((c) => c.x)) - Math.min(...hesaplama.cekme_polygon_coords.map((c) => c.x))
-            : parselData.bounds.width - imarParams.on_bahce - imarParams.arka_bahce,
-          buildable_height: hesaplama.cekme_polygon_coords
-            ? Math.max(...hesaplama.cekme_polygon_coords.map((c) => c.y)) - Math.min(...hesaplama.cekme_polygon_coords.map((c) => c.y))
-            : parselData.bounds.height - 2 * imarParams.yan_bahce,
+          buildable_width: bw,
+          buildable_height: bh,
         }) as BuildingData
 
         setBuildingData(data)
         toast.success('3D Model', 'Bina modeli oluşturuldu')
       } catch (e: unknown) {
-        toast.error('3D Model Hatası', e instanceof Error ? e.message : '3D veri yüklenemedi')
+        const msg = e instanceof Error ? e.message : typeof e === 'string' ? e : JSON.stringify(e)
+        toast.error('3D Model Hatası', msg)
       } finally {
         setLoading(false)
       }
