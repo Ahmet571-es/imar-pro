@@ -55,7 +55,8 @@ function AppContent() {
 
     // Backend warm-up — Railway cold start'ı önle
     // Arka planda /health'e ping atarak backend'i uyandır
-    fetch('/api/bim/disciplines').catch(() => {})
+    const apiBase = import.meta.env.VITE_API_URL || ''
+    fetch(`${apiBase}/api/bim/disciplines`).catch(() => {})
   }, [initialize, loadFromStorage])
 
   // Set view based on auth state — check onboarding
