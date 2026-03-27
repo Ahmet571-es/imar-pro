@@ -88,6 +88,10 @@ export const useProjectListStore = create<ProjectListState>((set, get) => ({
         .select()
         .single()
 
+      if (error) {
+        console.error('Supabase project insert error:', error.message, error.details, error.hint)
+      }
+
       if (!error && result) {
         const saved: SavedProject = {
           id: result.id,
