@@ -1,0 +1,54 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # Manuel tetikleme
+
+jobs:
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Playwright
+        run: |
+          npm init -y
+          npm install @playwright/test
+          npx playwright install chromium --with-deps
+
+      - name: Wait for Vercel deploy
+        run: |
+          echo "Waiting 60s for Vercel deploy to complete..."
+          sleep 60
+          # Warm up backend
+          curl -s --max-time 30 https://balaban-imar.vercel.app/api/bim/disciplines || true
+          sleep 5
+
+      - name: Run E2E tests
+        run: npx playwright test --reporter=list
+        env:
+          CI: true
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: test-results/
+          retention-days: 7
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: playwright-report/
+          retention-days: 7
