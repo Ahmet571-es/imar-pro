@@ -78,6 +78,12 @@ async function request<T>(path: string, options?: RequestInit, retries = 3): Pro
         throw new Error(error.detail || 'Bu işlem için yetkiniz yok.')
       }
 
+      // 502/503/504 — backend cold start, retry
+      if ([502, 503, 504].includes(res.status) && attempt < retries) {
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1))) // Backoff: 2s, 4s
+        continue
+      }
+
       if (!res.ok) {
         const error = await res.json().catch(() => ({ detail: res.statusText }))
         throw new Error(error.detail || `Sunucu hatası (HTTP ${res.status})`)
@@ -87,16 +93,13 @@ async function request<T>(path: string, options?: RequestInit, retries = 3): Pro
     } catch (e) {
       lastError = e instanceof Error ? e : new Error(String(e))
 
-      // Network error — retry
-      if (e instanceof TypeError && e.message.includes('fetch') && attempt < retries) {
+      // Network error or fetch failure — retry
+      if (attempt < retries && (e instanceof TypeError || (e instanceof Error && /fetch|network|aborted/i.test(e.message)))) {
         await new Promise(r => setTimeout(r, 2000 * (attempt + 1)))
         continue
       }
 
-      // Don't retry non-network errors
-      if (!(e instanceof TypeError && e.message.includes('fetch'))) {
-        throw e
-      }
+      throw e
     }
   }
 
