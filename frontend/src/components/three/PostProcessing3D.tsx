@@ -25,7 +25,7 @@ export function PostProcessingEffects({
   if (!enabled) return null
 
   return (
-    <EffectComposer multisampling={0}>
+    <EffectComposer multisampling={0} enableNormalPass>
       {ssaoEnabled ? (
         <SSAO
           samples={21}

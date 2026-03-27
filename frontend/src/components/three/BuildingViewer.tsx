@@ -582,7 +582,7 @@ export function BuildingViewer({ floors, columns, building, totalCost = 0, visib
   return (
     <div className="three-canvas-container relative w-full h-full min-h-[400px] sm:min-h-[500px] rounded-xl overflow-hidden bg-gradient-to-b from-sky-100 to-sky-50">
       <Canvas
-        shadows
+        shadows={{ type: THREE.PCFSoftShadowMap }}
         camera={{
           position: [building.width * 1.5, building.total_height * 1.2, building.depth * 1.5],
           fov: 45, near: 0.1, far: 500,
