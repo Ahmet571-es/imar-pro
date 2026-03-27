@@ -57,8 +57,8 @@ export function PlanRadarChart({ plans }: Props) {
       <h4 className="text-xs font-semibold text-text-muted mb-3 flex items-center gap-1.5">
         PLAN KARŞILAŞTIRMA — 9 BOYUTLU RADAR
       </h4>
-      <div style={{ height: 280 }}>
-        <ResponsiveContainer>
+      <div style={{ height: 280, minWidth: 200 }}>
+        <ResponsiveContainer width="100%" height="100%">
           <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
             <PolarGrid stroke="#e2e8f0" />
             <PolarAngleAxis

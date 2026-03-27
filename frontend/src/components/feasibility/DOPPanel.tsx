@@ -126,8 +126,8 @@ export function DOPPanel({ arsaAlani, arsaBirimFiyat = 15000 }: Props) {
           {data.karsilastirma.length > 0 && (
             <div>
               <h4 className="text-xs font-semibold text-text-muted mb-2">DOP ORANI KARŞILAŞTIRMA</h4>
-              <div style={{ height: 180 }}>
-                <ResponsiveContainer>
+              <div style={{ height: 180, minWidth: 200 }}>
+                <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data.karsilastirma} margin={{ left: 0, right: 10, top: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                     <XAxis dataKey="dop_orani" fontSize={9} />

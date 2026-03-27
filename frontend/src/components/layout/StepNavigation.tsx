@@ -92,7 +92,7 @@ export function StepNavigation() {
                 />
               </div>
               <span className="text-[11px] text-primary font-semibold tabular-nums whitespace-nowrap">
-                {`%${completionPercent}`}
+                {`${completionPercent}%`}
               </span>
             </div>
           )}

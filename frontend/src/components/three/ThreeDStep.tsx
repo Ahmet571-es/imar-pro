@@ -666,7 +666,7 @@ export function ThreeDStep() {
       )}
 
       {/* Navigation */}
-      <div className="flex gap-3 mt-6">
+      <div className="flex gap-3 mt-6 relative z-10">
         <button onClick={() => setStep('plan')} className="btn-secondary flex items-center gap-2">
           <ArrowLeft className="w-4 h-4" /> AI Plan
         </button>

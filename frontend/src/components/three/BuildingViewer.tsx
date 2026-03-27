@@ -580,8 +580,9 @@ export function BuildingViewer({ floors, columns, building, totalCost = 0, visib
   }, [constructionMonth])
 
   return (
-    <div className="three-canvas-container relative w-full h-full min-h-[400px] sm:min-h-[500px] rounded-xl overflow-hidden bg-gradient-to-b from-sky-100 to-sky-50">
+    <div className="three-canvas-container relative w-full rounded-xl overflow-hidden bg-gradient-to-b from-sky-100 to-sky-50" style={{ height: 'clamp(400px, 50vh, 600px)', touchAction: 'none' }}>
       <Canvas
+        style={{ touchAction: 'none' }}
         shadows={{ type: THREE.PCFSoftShadowMap }}
         camera={{
           position: [building.width * 1.5, building.total_height * 1.2, building.depth * 1.5],
@@ -592,7 +593,9 @@ export function BuildingViewer({ floors, columns, building, totalCost = 0, visib
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.1,
           preserveDrawingBuffer: true,
+          powerPreference: 'high-performance',
         }}
+        dpr={[1, 1.5]}
         onPointerMissed={() => {
           if (!measureMode) { setSelectedRoom(null); setSelectedRoomData(null) }
         }}
