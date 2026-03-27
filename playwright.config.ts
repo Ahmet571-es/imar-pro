@@ -1,30 +1,27 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
-  testDir: '.',
-  testMatch: 'e2e-full-journey.spec.ts',
-  timeout: 120000,
-  expect: { timeout: 10000 },
-  fullyParallel: false,
-  retries: 0,
-  reporter: 'list',
+  testDir: './e2e',
+  timeout: 60000,
+  retries: 1,
   use: {
-    headless: true,
-    viewport: { width: 1280, height: 720 },
-    actionTimeout: 60000,
-    navigationTimeout: 30000,
-    screenshot: 'off',
-    trace: 'off',
+    baseURL: 'https://balaban-imar.vercel.app',
+    screenshot: 'on',
+    trace: 'on-first-retry',
+    locale: 'tr-TR',
   },
   projects: [
     {
-      name: 'chromium',
-      use: {
-        browserName: 'chromium',
-        launchOptions: {
-          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'],
-        },
-      },
+      name: 'desktop',
+      use: { viewport: { width: 1440, height: 900 } },
+    },
+    {
+      name: 'mobile',
+      use: { viewport: { width: 375, height: 812 } },
     },
   ],
-});
+  reporter: [
+    ['html', { open: 'never' }],
+    ['list'],
+  ],
+})
