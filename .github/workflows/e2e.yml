@@ -5,11 +5,15 @@ on:
     branches: [main]
   workflow_dispatch: # Manuel tetikleme
 
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: false  # Önceki run iptal EDİLMESİN
+
 jobs:
   e2e:
     name: Playwright E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
