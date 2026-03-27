@@ -156,7 +156,7 @@ test.describe('Desktop — Tam Kullanıcı Akışı', () => {
     expect(count).toBeGreaterThanOrEqual(2)
   })
 
-  test('06 — API endpoint'leri çalışıyor', async ({ page }) => {
+  test('06 — API endpointleri çalışıyor', async ({ page }) => {
     // Backend API doğrudan test
     const disciplines = await page.evaluate(() => 
       fetch('/api/bim/disciplines').then(r => r.json())
@@ -205,7 +205,7 @@ test.describe('Desktop — Tam Kullanıcı Akışı', () => {
     expect(eq).toHaveProperty('parametreler')
   })
 
-  test('07 — SaaS endpoint'leri çalışıyor', async ({ page }) => {
+  test('07 — SaaS endpointleri çalışıyor', async ({ page }) => {
     const endpoints = [
       '/api/user/profile',
       '/api/user/usage',
