@@ -41,7 +41,7 @@ export function PlanRadarChart({ plans }: Props) {
       fullName: dimKey,
     }
     plans.forEach((plan, i) => {
-      const rawVal = plan.score?.[dimKey] || '0'
+      const rawVal = String(plan.score?.[dimKey] ?? '0')
       // Parse "12.5" from the score string
       const num = parseFloat(rawVal.replace('/100', ''))
       // Normalize to 0-100 for radar display
@@ -134,10 +134,11 @@ export function PlanRadarChart({ plans }: Props) {
             <tbody>
               {dimensions.map((dimKey) => {
                 const scores = plans.map(p => {
-                  const raw = p.score?.[dimKey] || '0'
+                  const raw = String(p.score?.[dimKey] ?? '0')
                   return parseFloat(raw.replace('/100', ''))
                 })
                 const maxScore = Math.max(...scores)
+                const bestIdx = maxScore > 0 ? scores.indexOf(maxScore) : -1
                 const label = DIMENSION_LABELS[dimKey] || dimKey
 
                 return (
@@ -151,15 +152,12 @@ export function PlanRadarChart({ plans }: Props) {
                       </td>
                     ))}
                     <td className="text-center py-1 px-1">
-                      {maxScore > 0 && (() => {
-                        const bestIdx = scores.indexOf(maxScore)
-                        return (
-                          <span className="inline-flex items-center gap-1 font-semibold" style={{ color: PLAN_COLORS[bestIdx % PLAN_COLORS.length] }}>
-                            <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: PLAN_COLORS[bestIdx % PLAN_COLORS.length] }} />
-                            {plans[bestIdx]?.plan_name?.replace(/\s*\(.*\)/, '').substring(0, 8)}
-                          </span>
-                        )
-                      })()}
+                      {bestIdx >= 0 && (
+                        <span className="inline-flex items-center gap-1 font-semibold" style={{ color: PLAN_COLORS[bestIdx % PLAN_COLORS.length] }}>
+                          <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: PLAN_COLORS[bestIdx % PLAN_COLORS.length] }} />
+                          {plans[bestIdx]?.plan_name?.replace(/\s*\(.*\)/, '').substring(0, 8)}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 )

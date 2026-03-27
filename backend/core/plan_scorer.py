@@ -244,13 +244,43 @@ def score_plan(
             score.details.append(f"⚠️ Sirkülasyon oranı yüksek: {circ_ratio:.0%} (max {stats['max_ratio']:.0%})")
 
     # ── 7. Güneş Optimizasyonu ──
+    # Compound directions (southwest, southeast) match both components
+    _sun_dirs = {sun_best_direction}
+    if "south" in sun_best_direction:
+        _sun_dirs.add("south")
+    if "north" in sun_best_direction:
+        _sun_dirs.add("north")
+    if "east" in sun_best_direction:
+        _sun_dirs.add("east")
+    if "west" in sun_best_direction:
+        _sun_dirs.add("west")
+
     salon_rooms = plan.get_rooms_by_type("salon")
     balkon_rooms = plan.get_rooms_by_type("balkon")
+    yatak_rooms = plan.get_rooms_by_type("yatak_odasi")
     sun_score = 0.0
-    if salon_rooms and any(r.facing_direction == sun_best_direction for r in salon_rooms):
-        sun_score += 50
-    if balkon_rooms and any(r.facing_direction == sun_best_direction for r in balkon_rooms):
-        sun_score += 50
+
+    # Salon: ideal yönde → 40 puan, kabul edilebilir yönde → 20 puan
+    if salon_rooms:
+        if any(r.facing_direction in _sun_dirs for r in salon_rooms):
+            sun_score += 40
+        elif any(r.facing_direction and r.has_exterior_wall for r in salon_rooms):
+            sun_score += 15  # Dış cephede ama yanlış yönde — kısmi puan
+
+    # Balkon: ideal yönde → 30 puan
+    if balkon_rooms:
+        if any(r.facing_direction in _sun_dirs for r in balkon_rooms):
+            sun_score += 30
+        elif any(r.facing_direction and r.has_exterior_wall for r in balkon_rooms):
+            sun_score += 10
+
+    # Yatak odaları: herhangi biri güneş yönünde → 30 puan
+    if yatak_rooms:
+        if any(r.facing_direction in _sun_dirs for r in yatak_rooms):
+            sun_score += 30
+        elif any(r.facing_direction and r.has_exterior_wall for r in yatak_rooms):
+            sun_score += 10
+
     score.sun_optimization = sun_score * w["sun_optimization"] / 100 * 100
 
     # ── 8. Yapısal Grid (basit) ──
